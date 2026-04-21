@@ -31,8 +31,9 @@ function createClient(): AxiosInstance {
         return Promise.reject(new NetworkError("网络连接失败，请检查网络"));
       }
       const { status, data } = error.response;
+      const serverMessage = data?.message ?? data?.detail;
       if (status === 400) {
-        return Promise.reject(new ValidationError(data?.message ?? "参数错误"));
+        return Promise.reject(new ValidationError(serverMessage ?? "参数错误"));
       }
       if (status === 401 || status === 403) {
         localStorage.removeItem("auth_token");
@@ -40,12 +41,12 @@ function createClient(): AxiosInstance {
         return Promise.reject(new ApiError(status, "登录已过期，请重新登录"));
       }
       if (status === 404) {
-        return Promise.reject(new ApiError(404, data?.message ?? "资源不存在"));
+        return Promise.reject(new ApiError(404, serverMessage ?? "资源不存在"));
       }
       if (status >= 500) {
-        return Promise.reject(new ApiError(status, "服务器异常，请稍后重试"));
+        return Promise.reject(new ApiError(status, serverMessage ?? "服务器异常，请稍后重试"));
       }
-      return Promise.reject(new ApiError(status, data?.message ?? "请求失败"));
+      return Promise.reject(new ApiError(status, serverMessage ?? "请求失败"));
     }
   );
 

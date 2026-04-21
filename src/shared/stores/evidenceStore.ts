@@ -7,6 +7,7 @@ import type {
   AnalyzeLogisticsRequest,
   AnalyzeLogisticsResponse,
   ImportEvidenceResponse,
+  EvidenceUploadType,
 } from "@/services/api/types/evidence";
 
 export type EvidenceStatus = "idle" | "scanning" | "success" | "error";
@@ -169,7 +170,7 @@ export const useEvidenceStore = defineStore("evidence", {
         this.logistics.error = e instanceof Error ? e.message : "unknown_error";
       }
     },
-    async uploadFile(file: File, evidenceType: "chat" | "transfer" | "logistics") {
+    async uploadFile(file: File, evidenceType: EvidenceUploadType) {
       const allowedTypes = ["text/csv", "text/plain", "application/vnd.ms-excel"];
       const allowedExts = [".csv", ".txt"];
       const ext = "." + file.name.split(".").pop()!.toLowerCase();
@@ -193,14 +194,21 @@ export const useEvidenceStore = defineStore("evidence", {
 
       try {
         this.upload.progress = 30;
-        const res = await repositories.evidence.uploadFile(file, evidenceType);
+        const res = await repositories.evidence.uploadFile({
+          file,
+          evidenceType,
+          caseId: this.caseId ?? undefined,
+        });
         this.upload.progress = 80;
 
-        if (res.code !== 0) {
-          throw new Error(res.message || "文件上传失败，请重试");
+        const isSuccess =
+          (typeof (res as any)?.success === "boolean" && (res as any).success) ||
+          ((res as any)?.code === 0);
+        if (!isSuccess) {
+          throw new Error((res as any)?.message || "文件上传失败，请重试");
         }
 
-        this.upload.rawText = res.data!.rawText;
+        this.upload.rawText = (res as any)?.data?.rawText ?? (res as any)?.rawText ?? null;
         this.upload.progress = 100;
         this.upload.status = "success";
       } catch (e) {

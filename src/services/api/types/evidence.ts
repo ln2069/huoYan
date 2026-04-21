@@ -57,15 +57,25 @@ export type AnalyzeChatResponse = ApiResult<EvidenceAnalysisResult>;
 export type AnalyzeTransferResponseResult = ApiResult<AnalyzeTransferResponse>;
 export type AnalyzeLogisticsResponseResult = ApiResult<AnalyzeLogisticsResponse>;
 
+export type EvidenceUploadType = "chat" | "transfer" | "logistics";
+
 export interface UploadFileRequest {
   file: File;
-  evidenceType: "chat" | "transfer" | "logistics";
+  evidenceType: EvidenceUploadType;
+  caseId?: string | number;
+  caseNo?: string;
 }
 
 export interface UploadFileResponse {
-  rawText: string;
-  fileName: string;
-  recordCount: number;
+  success: boolean;
+  message: string;
+  case_id: number;
+  case_no: string;
+  total_records: number;
+  saved_records: number;
+  rawText?: string;
+  fileName?: string;
+  recordCount?: number;
 }
 
 export interface ImportEvidenceRequest {
@@ -90,6 +100,6 @@ export interface EvidenceRepository {
   analyzeTransfer(req: AnalyzeTransferRequest): Promise<AnalyzeTransferResponseResult>;
   analyzeLogistics(req: AnalyzeLogisticsRequest): Promise<AnalyzeLogisticsResponseResult>;
   analyzeEvidence(req: { evidence_text: string, evidence_type: string, case_id?: string | number }): Promise<any>;
-  uploadFile(file: File, evidenceType: string): Promise<any>;
+  uploadFile(req: UploadFileRequest): Promise<UploadFileResponse>;
   importEvidence(req: ImportEvidenceRequest): Promise<ImportEvidenceResponseResult>;
 }
