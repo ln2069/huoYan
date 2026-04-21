@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, reactive, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElButton, ElInput, ElTable, ElTableColumn, ElMessage, ElProgress, ElAlert, ElSelect, ElOption, ElLoading } from "element-plus";
-import { Cpu, Document, Connection, Upload, Money, Van } from "@element-plus/icons-vue";
+import { ElButton, ElInput, ElMessage, ElProgress, ElAlert, ElSelect, ElOption, ElLoading } from "element-plus";
+import { Cpu, Document, Connection, Download, Upload, Money, Van } from "@element-plus/icons-vue";
 import { useEvidenceStore } from "@/shared/stores/evidenceStore";
 import { useReportStore } from "@/shared/stores/reportStore";
 import { repositories } from "@/services";
@@ -35,6 +35,71 @@ watch(
 );
 
 const caseOptions = ref<any[]>([]);
+
+type EvidenceTabKey = "chat" | "transfer" | "logistics";
+
+type AnalysisState = {
+  done: boolean;
+  result: any | null;
+  error: string | null;
+  analyzing: boolean;
+};
+
+type UploadState = {
+  status: "idle" | "uploading" | "success" | "error";
+  progress: number;
+  fileName: string | null;
+  rawText: string | null;
+  error: string | null;
+};
+
+type TabUiState = {
+  analysis: AnalysisState;
+  upload: UploadState;
+};
+
+function createAnalysisState(): AnalysisState {
+  return {
+    done: false,
+    result: null,
+    error: null,
+    analyzing: false,
+  };
+}
+
+function createUploadState(): UploadState {
+  return {
+    status: "idle",
+    progress: 0,
+    fileName: null,
+    rawText: null,
+    error: null,
+  };
+}
+
+const tabUiState = reactive<Record<EvidenceTabKey, TabUiState>>({
+  chat: {
+    analysis: createAnalysisState(),
+    upload: createUploadState(),
+  },
+  transfer: {
+    analysis: createAnalysisState(),
+    upload: createUploadState(),
+  },
+  logistics: {
+    analysis: createAnalysisState(),
+    upload: createUploadState(),
+  },
+});
+
+function getTabUiState(tab: EvidenceTabKey) {
+  return tabUiState[tab];
+}
+
+function resetTabUiState(tab: EvidenceTabKey) {
+  Object.assign(tabUiState[tab].analysis, createAnalysisState());
+  Object.assign(tabUiState[tab].upload, createUploadState());
+}
 
 // 加载案件列表
 async function loadCases() {
@@ -76,21 +141,16 @@ const sampleChat = `刘某某: 老曹，刚到一批轮毂。
 
 function loadSample() {
   store.rawText = sampleChat;
-  analysisDone.value = false;
-  analysisResult.value = null;
+  resetTabUiState("chat");
   store.reset();
-  store.resetUpload();
 }
 
 function clearChatInput() {
   store.rawText = "";
-  analysisDone.value = false;
-  analysisResult.value = null;
+  resetTabUiState("chat");
   store.reset();
-  store.resetUpload();
 }
 
-const isAnalyzing = ref(false);
 const reportStore = useReportStore();
 
 const lastReportUrl = computed(() => {
@@ -104,31 +164,122 @@ const lastReportName = computed(() => {
   if (!caseId) return "";
   return reportStore.getReport(caseId)?.name || "";
 });
-const analysisDone = ref(false);
-const analysisResult = ref<any>(null);
-const analysisError = ref<string | null>(null);
 
-const isTransferAnalyzing = ref(false);
-const transferAnalysisDone = ref(false);
+const analysisDone = computed({
+  get: () => getTabUiState(evidenceTab.value).analysis.done,
+  set: (value: boolean) => {
+    getTabUiState(evidenceTab.value).analysis.done = value;
+  },
+});
 
-const isLogisticsAnalyzing = ref(false);
-const logisticsAnalysisDone = ref(false);
+const analysisResult = computed({
+  get: () => getTabUiState(evidenceTab.value).analysis.result,
+  set: (value: any) => {
+    getTabUiState(evidenceTab.value).analysis.result = value;
+  },
+});
 
-const isUploading = computed(() => store.upload.status === "uploading");
-const uploadDone = computed(() => store.upload.status === "success");
-const uploadError = computed(() => store.upload.status === "error");
-const uploadProgress = computed(() => store.upload.progress);
-const uploadedFileName = computed(() => store.upload.fileName);
-const uploadedRawText = computed(() => store.upload.rawText);
+const analysisError = computed({
+  get: () => getTabUiState(evidenceTab.value).analysis.error,
+  set: (value: string | null) => {
+    getTabUiState(evidenceTab.value).analysis.error = value;
+  },
+});
+
+const isAnalyzing = computed({
+  get: () => getTabUiState(evidenceTab.value).analysis.analyzing,
+  set: (value: boolean) => {
+    getTabUiState(evidenceTab.value).analysis.analyzing = value;
+  },
+});
+
+const transferAnalysisDone = computed({
+  get: () => tabUiState.transfer.analysis.done,
+  set: (value: boolean) => {
+    tabUiState.transfer.analysis.done = value;
+  },
+});
+
+const logisticsAnalysisDone = computed({
+  get: () => tabUiState.logistics.analysis.done,
+  set: (value: boolean) => {
+    tabUiState.logistics.analysis.done = value;
+  },
+});
+
+const isTransferAnalyzing = computed({
+  get: () => tabUiState.transfer.analysis.analyzing,
+  set: (value: boolean) => {
+    tabUiState.transfer.analysis.analyzing = value;
+  },
+});
+
+const isLogisticsAnalyzing = computed({
+  get: () => tabUiState.logistics.analysis.analyzing,
+  set: (value: boolean) => {
+    tabUiState.logistics.analysis.analyzing = value;
+  },
+});
+
+const isUploading = computed(() => getTabUiState(evidenceTab.value).upload.status === "uploading");
+const uploadDone = computed(() => getTabUiState(evidenceTab.value).upload.status === "success");
+const uploadError = computed(() => getTabUiState(evidenceTab.value).upload.status === "error");
+const uploadProgress = computed(() => getTabUiState(evidenceTab.value).upload.progress);
+const uploadedFileName = computed(() => getTabUiState(evidenceTab.value).upload.fileName);
+const uploadedRawText = computed(() => getTabUiState(evidenceTab.value).upload.rawText);
+const uploadErrorMessage = computed(() => getTabUiState(evidenceTab.value).upload.error);
+
+const normalizedKeyActors = computed(() => {
+  const result = analysisResult.value as any;
+  const directActors = Array.isArray(result?.key_actors) ? result.key_actors : [];
+  if (directActors.length > 0) {
+    return directActors.map((actor: any) => ({
+      name: actor?.name || actor?.person || actor?.id || "未知主体",
+      role: actor?.role || actor?.behavior_role || actor?.mentioned_in || "",
+      contact: actor?.contact || actor?.phone || "",
+      mentionedIn: actor?.mentioned_in || actor?.evidence_type || "",
+    }));
+  }
+
+  const entities = Array.isArray(result?.key_entities?.entities) ? result.key_entities.entities : [];
+  if (entities.length > 0) {
+    return entities.map((entity: any) => ({
+      name: entity?.name || "未知主体",
+      role: entity?.role || "",
+      contact: entity?.phone || entity?.bankAccount || "",
+      mentionedIn: entity?.mentioned_in || "",
+    }));
+  }
+
+  const names = Array.isArray(result?.key_entities?.names) ? result.key_entities.names : [];
+  const roles = Array.isArray(result?.key_entities?.roles) ? result.key_entities.roles : [];
+  const contacts = Array.isArray(result?.key_entities?.contacts) ? result.key_entities.contacts : [];
+  const maxLen = Math.max(names.length, roles.length, contacts.length);
+  if (maxLen === 0) {
+    return [];
+  }
+
+  return Array.from({ length: maxLen }, (_, i) => ({
+    name: names[i] ? String(names[i]) : "未知主体",
+    role: roles[i] ? String(roles[i]) : "",
+    contact: contacts[i] ? String(contacts[i]) : "",
+    mentionedIn: "",
+  }));
+});
 
 // 智能分析接口调用
 async function startAnalysis() {
+  isAnalyzing.value = true;
+  analysisError.value = null;
+  analysisDone.value = false;
+  analysisResult.value = null;
   const currentText = evidenceTab.value === 'chat' ? store.rawText :
     evidenceTab.value === 'transfer' ? transferInput.value :
       logisticsInput.value;
 
   if (!currentText.trim()) {
     ElMessage.warning(`请先输入或上传${evidenceTab.value === 'chat' ? '谈话' : evidenceTab.value === 'transfer' ? '转账' : '物流'}记录`);
+    isAnalyzing.value = false;
     return;
   }
 
@@ -193,16 +344,9 @@ async function startAnalysis() {
     console.error('分析失败:', error);
     ElMessage.error('分析失败，请稍后重试');
   } finally {
+    isAnalyzing.value = false;
     loading.close();
   }
-}
-
-function scrollToEvidence(evidenceId: string) {
-  const el = document.querySelector<HTMLElement>(`[data-evidence-id="${evidenceId}"]`);
-  if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-  el.classList.add("evidence-highlight");
-  setTimeout(() => el.classList.remove("evidence-highlight"), 2000);
 }
 
 // 高亮原始文本中的关键词
@@ -214,13 +358,18 @@ const highlightedText = computed(() => {
   if (!currentText) return "";
   let text = currentText.replace(/\n/g, '<br/>');
 
-  const keywords = analysisResult.value?.subjective_knowledge?.hit_keywords || [];
+  const rawKeywords = analysisResult.value?.subjective_knowledge?.hit_keywords;
+  const keywords = Array.isArray(rawKeywords)
+    ? rawKeywords.map((keyword) => String(keyword)).filter(Boolean)
+    : typeof rawKeywords === "string"
+      ? [rawKeywords]
+      : [];
   if (keywords.length === 0) return text;
 
   // 按长度降序排列，避免子串冲突
-  const sortedKeywords = [...new Set(keywords)].sort((a: string, b: string) => b.length - a.length);
+  const sortedKeywords = [...new Set(keywords)].sort((a, b) => b.length - a.length);
 
-  sortedKeywords.forEach((kw: string) => {
+  sortedKeywords.forEach((kw) => {
     if (!kw) return;
     const regex = new RegExp(`(${kw})`, 'gi');
     text = text.replace(regex, '<mark class="bg-yellow-200 text-red-600 px-0.5 rounded font-bold">$1</mark>');
@@ -245,18 +394,16 @@ const logisticsInput = ref("");
 
 function loadTransferSample() {
   transferInput.value = sampleTransfer;
-  transferAnalysisDone.value = false;
-  analysisResult.value = null;
+  tabUiState.transfer.analysis = createAnalysisState();
+  tabUiState.transfer.upload = createUploadState();
   store.resetTransfer();
-  store.resetUpload();
 }
 
 function clearTransferInput() {
   transferInput.value = "";
-  transferAnalysisDone.value = false;
-  analysisResult.value = null;
+  tabUiState.transfer.analysis = createAnalysisState();
+  tabUiState.transfer.upload = createUploadState();
   store.resetTransfer();
-  store.resetUpload();
 }
 
 async function startTransferAnalysis() {
@@ -270,18 +417,16 @@ const sampleTransfer = `曹某某 | 刘某某 | 20200 | 2024-03-10 14:32 | 银�
 
 function loadLogisticsSample() {
   logisticsInput.value = sampleLogistics;
-  logisticsAnalysisDone.value = false;
-  analysisResult.value = null;
+  tabUiState.logistics.analysis = createAnalysisState();
+  tabUiState.logistics.upload = createUploadState();
   store.resetLogistics();
-  store.resetUpload();
 }
 
 function clearLogisticsInput() {
   logisticsInput.value = "";
-  logisticsAnalysisDone.value = false;
-  analysisResult.value = null;
+  tabUiState.logistics.analysis = createAnalysisState();
+  tabUiState.logistics.upload = createUploadState();
   store.resetLogistics();
-  store.resetUpload();
 }
 
 async function startLogisticsAnalysis() {
@@ -293,35 +438,48 @@ YT9876543210 | 经销商A | 买家乙 | 2024-03-12 09:15 | 圆通速递
 ZTO2345678901 | 刘某某 | 曹某某 | 2024-03-14 16:20 | 中通速递`;
 
 async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | "logistics") {
-  store.resetUpload();
+  const tab = evidenceTab.value as EvidenceTabKey;
+  resetTabUiState(tab);
   const caseId = selectedCaseId.value || (caseOptions.value.length > 0 ? String(caseOptions.value[0].value) : "");
 
   if (!caseId) {
-    store.upload.status = 'error';
-    store.upload.progress = 0;
-    store.upload.error = '请先选择案件后再上传';
+    tabUiState[tab].upload.status = 'error';
+    tabUiState[tab].upload.progress = 0;
+    tabUiState[tab].upload.error = '请先选择案件后再上传';
     ElMessage.warning('请先选择案件后再上传');
     return false;
   }
 
   try {
-    store.upload.status = 'uploading';
-    store.upload.progress = 30;
+    tabUiState[tab].upload.status = 'uploading';
+    tabUiState[tab].upload.progress = 30;
 
     const response = await repositories.evidence.uploadFile({
       file,
       evidenceType,
       caseId,
     });
-    store.upload.progress = 90;
+    tabUiState[tab].upload.progress = 90;
 
-    store.upload.status = 'success';
-    store.upload.progress = 100;
-    store.upload.fileName = file.name;
+    const fileText = await file.text();
+    tabUiState[tab].upload.rawText = fileText;
+    tabUiState[tab].upload.status = 'success';
+    tabUiState[tab].upload.progress = 100;
+    tabUiState[tab].upload.fileName = file.name;
 
     if (!response?.success) {
       throw new Error(response?.message || '上传失败');
     }
+
+    if (evidenceType === "chat") {
+      store.rawText = fileText;
+    } else if (evidenceType === "transfer") {
+      transferInput.value = fileText;
+    } else {
+      logisticsInput.value = fileText;
+    }
+
+    await startAnalysis();
 
     if (evidenceType === "chat") {
       ElMessage.success(`通讯记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
@@ -332,9 +490,9 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '文件上传失败';
-    store.upload.status = 'error';
-    store.upload.progress = 0;
-    store.upload.error = errorMessage;
+    tabUiState[tab].upload.status = 'error';
+    tabUiState[tab].upload.progress = 0;
+    tabUiState[tab].upload.error = errorMessage;
     ElMessage.error(errorMessage);
     console.error('文件上传失败:', error);
   }
@@ -348,11 +506,6 @@ async function handleTransferUpload(file: File) {
 
 async function handleLogisticsUpload(file: File) {
   return handleFileUpload(file, "logistics");
-}
-
-function syncToLedger() {
-  ElMessage.success("已同步至数据台账");
-  router.push("/ledger");
 }
 
 // 生成分析报告
@@ -447,7 +600,7 @@ function downloadLastReport() {
                 <label class="cursor-pointer">
                   选择 CSV 文件
                   <input type="file" accept=".csv,.txt" class="hidden" :disabled="isUploading"
-                    @change="(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleFileUpload(f, 'chat') }" />
+                    @change="(e) => { const input = e.target as HTMLInputElement; const f = input.files?.[0]; if (f) handleFileUpload(f, 'chat'); input.value = '' }" />
                 </label>
               </el-button>
               <el-progress v-if="isUploading" :percentage="uploadProgress" :stroke-width="6"
@@ -456,7 +609,7 @@ function downloadLastReport() {
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
               <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ store.upload.error }}
+                ✗ {{ uploadErrorMessage }}
               </div>
             </div>
 
@@ -577,51 +730,29 @@ function downloadLastReport() {
               </div>
             </div>
 
-            <!-- 关键主体提取 -->
-            <div v-if="analysisResult?.key_entities" class="app-card p-5">
+            <!-- 关键信息主体 -->
+            <div v-if="normalizedKeyActors.length > 0" class="app-card p-5">
               <div class="flex items-center gap-2 mb-3">
                 <span class="text-lg">🟡</span>
-                <h4 class="font-bold text-sm" style="color: #1A3A5C">关键主体提取</h4>
+                <h4 class="font-bold text-sm" style="color: #1A3A5C">关键信息主体</h4>
               </div>
               <div class="space-y-2">
-                <div v-if="analysisResult.key_entities.names && analysisResult.key_entities.names.length > 0"
-                  class="p-3 rounded bg-gray-50">
-                  <p class="text-xs font-semibold mb-1">人员：</p>
-                  <div class="flex flex-wrap gap-2">
-                    <span v-for="name in analysisResult.key_entities.names" :key="name"
-                      class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-                      {{ name }}
+                <div v-for="actor in normalizedKeyActors"
+                  :key="`${actor.name}-${actor.role}-${actor.contact}-${actor.mentionedIn}`"
+                  class="p-3 rounded bg-gray-50 border border-gray-100">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">
+                      {{ actor.name }}
+                    </span>
+                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                      {{ actor.role }}
+                    </span>
+                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                      {{ actor.contact }}
                     </span>
                   </div>
-                </div>
-                <div v-if="analysisResult.key_entities.roles && analysisResult.key_entities.roles.length > 0"
-                  class="p-3 rounded bg-gray-50">
-                  <p class="text-xs font-semibold mb-1">角色：</p>
-                  <div class="flex flex-wrap gap-2">
-                    <span v-for="role in analysisResult.key_entities.roles" :key="role"
-                      class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                      {{ role }}
-                    </span>
-                  </div>
-                </div>
-                <div v-if="analysisResult.key_entities.contacts && analysisResult.key_entities.contacts.length > 0"
-                  class="p-3 rounded bg-gray-50">
-                  <p class="text-xs font-semibold mb-1">联系方式：</p>
-                  <div class="flex flex-wrap gap-2">
-                    <span v-for="contact in analysisResult.key_entities.contacts" :key="contact"
-                      class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                      {{ contact }}
-                    </span>
-                  </div>
-                </div>
-                <div v-if="analysisResult.key_entities.amounts && analysisResult.key_entities.amounts.length > 0"
-                  class="p-3 rounded bg-gray-50">
-                  <p class="text-xs font-semibold mb-1">金额：</p>
-                  <div class="flex flex-wrap gap-2">
-                    <span v-for="amount in analysisResult.key_entities.amounts" :key="amount"
-                      class="px-2 py-1 rounded text-xs bg-red-100 text-red-800">
-                      {{ amount }}
-                    </span>
+                  <div v-if="actor.mentionedIn" class="text-[11px] mt-2 text-gray-500">
+                    出现于：{{ actor.mentionedIn }}
                   </div>
                 </div>
               </div>
@@ -707,7 +838,7 @@ function downloadLastReport() {
                 <label class="cursor-pointer">
                   选择 CSV 文件
                   <input type="file" accept=".csv,.txt" class="hidden" :disabled="isUploading"
-                    @change="(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleTransferUpload(f) }" />
+                    @change="(e) => { const input = e.target as HTMLInputElement; const f = input.files?.[0]; if (f) handleTransferUpload(f); input.value = '' }" />
                 </label>
               </el-button>
               <el-progress v-if="isUploading" :percentage="uploadProgress" :stroke-width="6"
@@ -716,7 +847,7 @@ function downloadLastReport() {
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
               <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ store.upload.error }}
+                ✗ {{ uploadErrorMessage }}
               </div>
             </div>
 
@@ -804,20 +935,26 @@ function downloadLastReport() {
               </div>
             </div>
 
-            <div v-if="analysisResult?.key_entities" class="app-card p-5">
+            <div v-if="normalizedKeyActors.length > 0" class="app-card p-5">
               <div class="flex items-center gap-2 mb-3">
                 <span class="text-lg">🟡</span>
                 <h4 class="font-bold text-sm" style="color: #1A3A5C">关键主体提取</h4>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div class="p-2 rounded bg-blue-50 border border-blue-100">
-                  <p class="text-[10px] font-bold text-blue-700">人员/角色</p>
-                  <p class="text-xs">{{ (analysisResult.key_entities.names ||
-                    []).concat(analysisResult.key_entities.roles || []).join(', ') }}</p>
-                </div>
-                <div class="p-2 rounded bg-green-50 border border-green-100">
-                  <p class="text-[10px] font-bold text-green-700">联系方式</p>
-                  <p class="text-xs">{{ (analysisResult.key_entities.contacts || []).join(', ') }}</p>
+              <div class="space-y-2">
+                <div v-for="actor in normalizedKeyActors"
+                  :key="`${actor.name}-${actor.role}-${actor.contact}-${actor.mentionedIn}`"
+                  class="p-3 rounded bg-gray-50 border border-gray-100">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">
+                      {{ actor.name }}
+                    </span>
+                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                      {{ actor.role }}
+                    </span>
+                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                      {{ actor.contact }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -887,7 +1024,7 @@ function downloadLastReport() {
                 <label class="cursor-pointer">
                   选择 CSV 文件
                   <input type="file" accept=".csv,.txt" class="hidden" :disabled="isUploading"
-                    @change="(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleLogisticsUpload(f) }" />
+                    @change="(e) => { const input = e.target as HTMLInputElement; const f = input.files?.[0]; if (f) handleLogisticsUpload(f); input.value = '' }" />
                 </label>
               </el-button>
               <el-progress v-if="isUploading" :percentage="uploadProgress" :stroke-width="6"
@@ -896,7 +1033,7 @@ function downloadLastReport() {
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
               <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ store.upload.error }}
+                ✗ {{ uploadErrorMessage }}
               </div>
             </div>
 
@@ -967,15 +1104,29 @@ function downloadLastReport() {
               </div>
             </div>
 
-            <div v-if="analysisResult?.key_entities" class="app-card p-5">
+            <div v-if="normalizedKeyActors.length > 0" class="app-card p-5">
               <div class="flex items-center gap-2 mb-3">
                 <span class="text-lg">🟡</span>
-                <h4 class="font-bold text-sm" style="color: #1A3A5C">关键主体提取</h4>
+                <h4 class="font-bold text-sm" style="color: #1A3A5C">关键信息主体</h4>
               </div>
               <div class="space-y-2">
-                <div class="p-2 rounded bg-blue-50 border border-blue-100">
-                  <p class="text-[10px] font-bold text-blue-700">物流相关主体</p>
-                  <p class="text-xs">{{ (analysisResult.key_entities.names || []).join(', ') }}</p>
+                <div v-for="actor in normalizedKeyActors"
+                  :key="`${actor.name}-${actor.role}-${actor.contact}-${actor.mentionedIn}`"
+                  class="p-3 rounded bg-gray-50 border border-gray-100">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">
+                      {{ actor.name }}
+                    </span>
+                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                      {{ actor.role }}
+                    </span>
+                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                      {{ actor.contact }}
+                    </span>
+                  </div>
+                  <div v-if="actor.mentionedIn" class="text-[11px] mt-2 text-gray-500">
+                    出现于：{{ actor.mentionedIn }}
+                  </div>
                 </div>
               </div>
             </div>
