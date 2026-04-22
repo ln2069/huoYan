@@ -12,6 +12,8 @@ const isMasked = ref(true);
 const filterType = ref("");
 const loading = ref(false);
 const caseOptions = ref<any[]>([]);
+const currentPage = ref(1);
+const pageSize = ref(10);
 
 const evidenceList = ref<EvidenceListItem[]>([]);
 const stats = ref({
@@ -104,8 +106,8 @@ const filteredList = computed(() => {
 
 function resetFilter() {
   searchText.value = "";
-  selectedCaseNo.value = "";
   filterType.value = "";
+  currentPage.value = 1;
 }
 
 onMounted(() => {
@@ -115,7 +117,7 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- 顶部统计模块 - 完全参照图中样式 -->
+    <!-- 顶部统计模块 -->
     <div class="grid grid-cols-4 gap-6 mb-6">
       <div class="app-card flex flex-col items-center justify-center p-6 shadow-sm">
         <div class="flex items-center gap-2 mb-3">
@@ -151,7 +153,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 下方数据表 - 完全参照图中样式 -->
+    <!-- 下方数据表 -->
     <div class="app-card p-8 shadow-md rounded-xl">
       <div class="flex justify-between items-center mb-6">
         <div class="flex items-center gap-3">
@@ -171,9 +173,7 @@ onMounted(() => {
         <el-select v-model="selectedCaseId" placeholder="选择关联案件" class="!w-[200px]" size="default" clearable>
           <el-option v-for="opt in caseOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
         </el-select>
-        <div class="relative">
-          <el-input v-model="searchText" placeholder="搜索证据内容" :prefix-icon="Search" class="!w-[280px]" size="default" clearable />
-        </div>
+        <el-input v-model="searchText" placeholder="搜索证据内容" :prefix-icon="Search" class="!w-[280px]" size="default" clearable />
         <el-select v-model="filterType" placeholder="选择证据类型" class="!w-[180px]" size="default" clearable>
           <el-option label="通讯记录" value="通讯记录" />
           <el-option label="价格异常" value="价格异常" />
@@ -183,26 +183,24 @@ onMounted(() => {
       </div>
 
       <el-table 
-        :data="filteredList" 
+        :data="filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize)" 
         stripe 
-        size="default" 
-        class="w-full custom-table" 
+        class="data-table" 
         v-loading="loading"
-        :header-cell-style="{ background: '#F8FAFC', color: '#64748B', fontWeight: '600' }"
       >
-        <el-table-column label="案件编号" width="150">
+        <el-table-column label="案件名称" min-width="130">
           <template #default="scope">
             <span class="font-mono text-xs text-[#1A3A5C] font-semibold">
-              {{ scope.row.case_no || caseOptions.find(c => c.value == selectedCaseId)?.label.split(' - ')[0] || '当前案件' }}
+              {{ scope.row.case_no || caseOptions.find(c => c.value == selectedCaseId)?.label.split(' — ')[0] || '当前案件' }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="time" label="发现时间" width="120">
+        <el-table-column prop="time" label="发现时间" min-width="110">
           <template #default="scope">
             <span class="text-gray-500 font-medium">{{ scope.row.time.split('T')[0] }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="type" label="类型" width="130">
+        <el-table-column prop="type" label="类型" min-width="120">
           <template #default="{ row }">
             <span
               class="px-3 py-1 rounded text-xs font-bold"
@@ -241,7 +239,7 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="score" label="可信度" width="100" align="center">
+        <el-table-column prop="score" label="可信度" min-width="90" align="center">
           <template #default="{ row }">
             <span class="font-black text-sm text-[#1A3A5C]">{{ row.score }}/10</span>
           </template>
@@ -251,7 +249,7 @@ onMounted(() => {
             <span class="text-gray-600 italic text-sm">{{ scope.row.crime_type }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="severity_level" label="严重程度" width="120" align="center">
+        <el-table-column prop="severity_level" label="严重程度" min-width="110" align="center">
           <template #default="{ row }">
             <span
               v-if="row.severity_level"
@@ -268,15 +266,16 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
+      <div class="flex justify-end mt-4">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredList.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+        />
+      </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.custom-table :deep(.el-table__row) {
-  height: 60px;
-}
-.custom-table :deep(.el-table__cell) {
-  padding: 12px 0;
-}
-</style>

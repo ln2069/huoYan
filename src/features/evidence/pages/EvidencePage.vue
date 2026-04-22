@@ -7,6 +7,7 @@ import { useEvidenceStore } from "@/shared/stores/evidenceStore";
 import { useReportStore } from "@/shared/stores/reportStore";
 import { repositories } from "@/services";
 import { post } from "@/services/api/client";
+import { TableFormatError } from "@/services/api/errors";
 
 const route = useRoute();
 const router = useRouter();
@@ -51,6 +52,7 @@ type UploadState = {
   fileName: string | null;
   rawText: string | null;
   error: string | null;
+  formatErrorHint: string | null;
 };
 
 type TabUiState = {
@@ -67,6 +69,21 @@ function createAnalysisState(): AnalysisState {
   };
 }
 
+const templateHintsMap: Record<string, { label: string; columns: string[] }> = {
+  chat: {
+    label: '通讯记录',
+    columns: ['联络时间', '发起方 (微信号/姓名)', '接收方 (微信号/姓名)', '聊天内容'],
+  },
+  transfer: {
+    label: '资金流水',
+    columns: ['交易发生时间', '打款方 / 打款方 (账号/姓名)', '收款方 / 收款方 (账号/姓名)', '交易金额 / 交易金额 (元)'],
+  },
+  logistics: {
+    label: '物流记录',
+    columns: ['发货时间', '发件人/网点', '收件人/地址'],
+  },
+};
+
 function createUploadState(): UploadState {
   return {
     status: "idle",
@@ -74,6 +91,7 @@ function createUploadState(): UploadState {
     fileName: null,
     rawText: null,
     error: null,
+    formatErrorHint: null,
   };
 }
 
@@ -111,7 +129,7 @@ async function loadCases() {
     const list = Array.isArray(response) ? response : ((response as any)?.list || (response as any)?.data?.list || []);
 
     caseOptions.value = list.map((c: any) => ({
-      value: c.id,
+      value: String(c.id),
       label: `${c.case_no} - ${c.suspect_name || '未知嫌疑人'}`
     }));
 
@@ -165,69 +183,35 @@ const lastReportName = computed(() => {
   return reportStore.getReport(caseId)?.name || "";
 });
 
+const currentAnalysisState = computed(() => getTabUiState(evidenceTab.value).analysis);
+const currentUploadState = computed(() => getTabUiState(evidenceTab.value).upload);
+
 const analysisDone = computed({
-  get: () => getTabUiState(evidenceTab.value).analysis.done,
-  set: (value: boolean) => {
-    getTabUiState(evidenceTab.value).analysis.done = value;
-  },
+  get: () => currentAnalysisState.value.done,
+  set: (val) => currentAnalysisState.value.done = val
 });
-
 const analysisResult = computed({
-  get: () => getTabUiState(evidenceTab.value).analysis.result,
-  set: (value: any) => {
-    getTabUiState(evidenceTab.value).analysis.result = value;
-  },
+  get: () => currentAnalysisState.value.result,
+  set: (val) => currentAnalysisState.value.result = val
 });
-
 const analysisError = computed({
-  get: () => getTabUiState(evidenceTab.value).analysis.error,
-  set: (value: string | null) => {
-    getTabUiState(evidenceTab.value).analysis.error = value;
-  },
+  get: () => currentAnalysisState.value.error,
+  set: (val) => currentAnalysisState.value.error = val
 });
-
 const isAnalyzing = computed({
-  get: () => getTabUiState(evidenceTab.value).analysis.analyzing,
-  set: (value: boolean) => {
-    getTabUiState(evidenceTab.value).analysis.analyzing = value;
-  },
+  get: () => currentAnalysisState.value.analyzing,
+  set: (val) => currentAnalysisState.value.analyzing = val
 });
 
-const transferAnalysisDone = computed({
-  get: () => tabUiState.transfer.analysis.done,
-  set: (value: boolean) => {
-    tabUiState.transfer.analysis.done = value;
-  },
-});
-
-const logisticsAnalysisDone = computed({
-  get: () => tabUiState.logistics.analysis.done,
-  set: (value: boolean) => {
-    tabUiState.logistics.analysis.done = value;
-  },
-});
-
-const isTransferAnalyzing = computed({
-  get: () => tabUiState.transfer.analysis.analyzing,
-  set: (value: boolean) => {
-    tabUiState.transfer.analysis.analyzing = value;
-  },
-});
-
-const isLogisticsAnalyzing = computed({
-  get: () => tabUiState.logistics.analysis.analyzing,
-  set: (value: boolean) => {
-    tabUiState.logistics.analysis.analyzing = value;
-  },
-});
-
-const isUploading = computed(() => getTabUiState(evidenceTab.value).upload.status === "uploading");
-const uploadDone = computed(() => getTabUiState(evidenceTab.value).upload.status === "success");
-const uploadError = computed(() => getTabUiState(evidenceTab.value).upload.status === "error");
-const uploadProgress = computed(() => getTabUiState(evidenceTab.value).upload.progress);
-const uploadedFileName = computed(() => getTabUiState(evidenceTab.value).upload.fileName);
-const uploadedRawText = computed(() => getTabUiState(evidenceTab.value).upload.rawText);
-const uploadErrorMessage = computed(() => getTabUiState(evidenceTab.value).upload.error);
+const isUploading = computed(() => currentUploadState.value.status === "uploading");
+const uploadDone = computed(() => currentUploadState.value.status === "success");
+const uploadError = computed(() => currentUploadState.value.status === "error");
+const uploadProgress = computed(() => currentUploadState.value.progress);
+const uploadedFileName = computed(() => currentUploadState.value.fileName);
+const uploadedRawText = computed(() => currentUploadState.value.rawText);
+const uploadErrorMessage = computed(() => currentUploadState.value.error);
+const uploadFormatHint = computed(() => currentUploadState.value.formatErrorHint);
+const currentTemplateHint = computed(() => templateHintsMap[evidenceTab.value]);
 
 const normalizedKeyActors = computed(() => {
   const result = analysisResult.value as any;
@@ -273,12 +257,14 @@ async function startAnalysis() {
   analysisError.value = null;
   analysisDone.value = false;
   analysisResult.value = null;
+
   const currentText = evidenceTab.value === 'chat' ? store.rawText :
     evidenceTab.value === 'transfer' ? transferInput.value :
       logisticsInput.value;
 
   if (!currentText.trim()) {
-    ElMessage.warning(`请先输入或上传${evidenceTab.value === 'chat' ? '谈话' : evidenceTab.value === 'transfer' ? '转账' : '物流'}记录`);
+    const typeLabel = templateHintsMap[evidenceTab.value].label;
+    ElMessage.warning(`请先输入或上传${typeLabel}`);
     isAnalyzing.value = false;
     return;
   }
@@ -286,58 +272,37 @@ async function startAnalysis() {
   const loading = ElLoading.service({ fullscreen: true, text: '正在通过 AI 解析法律线索...' });
 
   try {
-    console.log("Sending analysis request:", {
-      evidence_text: currentText,
-      evidence_type: evidenceType.value,
-      case_id: selectedCaseId.value || undefined
-    });
-
     const res = await repositories.evidence.analyzeEvidence({
       evidence_text: currentText,
       evidence_type: evidenceType.value,
       case_id: selectedCaseId.value || undefined
     });
 
-    console.log("Analysis response received:", res);
-
-    // 后端返回的数据可能在 res.data 中，也可能直接在 res 中，取决于 client 的处理
     const rawData = res.data || res;
 
-    // 字段映射适配：将后端实际返回字段映射到前端模板使用的字段
+    // 统一字段映射适配
     const data = {
       ...rawData,
-      // 1. 价格分析映射
       price_analysis: rawData.price_analysis || (rawData.price_anomaly ? {
         is_anomaly: rawData.price_anomaly.is_anomaly,
         price_ratio: rawData.price_anomaly.price_ratio,
         suggestion: rawData.price_anomaly.suggestion
       } : null),
-
-      // 2. 主观明知映射
       subjective_knowledge: rawData.subjective_knowledge ? {
         ...rawData.subjective_knowledge,
         category_counts: rawData.subjective_knowledge.categories || rawData.subjective_knowledge.category_counts || {}
       } : null,
-
-      // 3. 关键主体映射
       key_entities: rawData.key_entities || (rawData.key_actors ? {
         names: rawData.key_actors.map((a: any) => a.name),
         roles: rawData.key_actors.map((a: any) => a.role),
         contacts: [],
         amounts: []
       } : { names: [], roles: [], contacts: [], amounts: [] }),
-
-      // 4. 罪名映射 (如果后端在 subjective_knowledge 内部返回)
       crime_type: rawData.crime_type || rawData.subjective_knowledge?.crime_type
     };
 
     analysisResult.value = data;
     analysisDone.value = true;
-
-    // 同步更新各子页面的状态
-    if (evidenceTab.value === 'transfer') transferAnalysisDone.value = true;
-    if (evidenceTab.value === 'logistics') logisticsAnalysisDone.value = true;
-
     ElMessage.success('AI 解析完成');
   } catch (error) {
     analysisError.value = '分析失败，请稍后重试';
@@ -348,6 +313,9 @@ async function startAnalysis() {
     loading.close();
   }
 }
+
+const startTransferAnalysis = startAnalysis;
+const startLogisticsAnalysis = startAnalysis;
 
 // 高亮原始文本中的关键词
 const highlightedText = computed(() => {
@@ -406,10 +374,6 @@ function clearTransferInput() {
   store.resetTransfer();
 }
 
-async function startTransferAnalysis() {
-  await startAnalysis();
-}
-
 const sampleTransfer = `曹某某 | 刘某某 | 20200 | 2024-03-10 14:32 | 银行转账
 曹某某 | 经销商A | 14000 | 2024-03-10 16:45 | 微信转账
 刘某某 | 曹某某 | 15200 | 2024-03-08 09:15 | 支付宝转账
@@ -429,9 +393,7 @@ function clearLogisticsInput() {
   store.resetLogistics();
 }
 
-async function startLogisticsAnalysis() {
-  await startAnalysis();
-}
+
 
 const sampleLogistics = `SF1234567890 | 刘某某 | 曹某某 | 2024-03-10 14:32 | 顺丰速运
 YT9876543210 | 经销商A | 买家乙 | 2024-03-12 09:15 | 圆通速递
@@ -489,11 +451,29 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
       ElMessage.success(`物流记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : '文件上传失败';
-    tabUiState[tab].upload.status = 'error';
-    tabUiState[tab].upload.progress = 0;
-    tabUiState[tab].upload.error = errorMessage;
-    ElMessage.error(errorMessage);
+    // 表格格式校验错误 — 专项友好提示
+    if (error instanceof TableFormatError) {
+      const tpl = templateHintsMap[evidenceType];
+      const hint = tpl
+        ? `${tpl.label}必填列：${tpl.columns.join('、')}`
+        : '请确保表头列名与系统模板一致';
+      tabUiState[tab].upload.status = 'error';
+      tabUiState[tab].upload.progress = 0;
+      tabUiState[tab].upload.error = error.detail;
+      tabUiState[tab].upload.formatErrorHint = hint;
+      ElMessage({
+        type: 'error',
+        message: error.detail,
+        duration: 5000,
+      });
+    } else {
+      const errorMessage = error instanceof Error ? error.message : '文件上传失败';
+      tabUiState[tab].upload.status = 'error';
+      tabUiState[tab].upload.progress = 0;
+      tabUiState[tab].upload.error = errorMessage;
+      tabUiState[tab].upload.formatErrorHint = null;
+      ElMessage.error(errorMessage);
+    }
     console.error('文件上传失败:', error);
   }
 
@@ -560,7 +540,7 @@ function downloadLastReport() {
         <div class="col-span-2">
           <div class="app-card p-5">
             <div class="flex items-center gap-2 mb-3">
-              <span class="text-sm text-text-secondary">案件编号：</span>
+              <span class="text-sm text-text-secondary">案件名称：</span>
               <el-select v-model="selectedCaseId" placeholder="选择案件" class="!w-[220px]" clearable>
                 <el-option v-for="opt in caseOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
@@ -608,8 +588,21 @@ function downloadLastReport() {
               <div v-if="uploadDone && uploadedFileName" class="text-xs mb-2" style="color: #27AE60">
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
-              <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ uploadErrorMessage }}
+              <div v-if="uploadError" class="mb-2">
+                <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
+                  class="mt-1" style="font-size: 12px">
+                  <template #title>
+                    <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
+                  </template>
+                  <div class="mt-1 text-xs" style="color: #606266; line-height: 1.6">
+                    {{ uploadFormatHint }}
+                  </div>
+                </el-alert>
+              </div>
+              <div v-if="currentTemplateHint && !uploadError" class="text-[11px] mt-1 mb-1 px-1 py-1.5 rounded"
+                style="color: #909399; background: #F4F4F5; border: 1px dashed #DCDFE6; line-height: 1.5">
+                📋 {{ currentTemplateHint.label }}必填列：{{ currentTemplateHint.columns.join(' | ') }}
               </div>
             </div>
 
@@ -783,7 +776,7 @@ function downloadLastReport() {
         <div class="col-span-2">
           <div class="app-card p-5">
             <div class="flex items-center gap-2 mb-3">
-              <span class="text-sm text-text-secondary">案件编号：</span>
+              <span class="text-sm text-text-secondary">案件名称：</span>
               <el-select v-model="selectedCaseId" placeholder="选择案件" class="!w-[220px]" clearable>
                 <el-option v-for="opt in caseOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
@@ -814,7 +807,7 @@ function downloadLastReport() {
               <el-input v-model="transferInput" type="textarea" :rows="10"
                 placeholder="粘贴示例格式：&#10;付款方 | 收款方 | 金额 | 时间 | 渠道&#10;曹某某 | 刘某某 | 20200 | 2024-03-10 | 银行转账&#10;..."
                 style="font-family: monospace; font-size: 13px; line-height: 1.8" />
-              <div v-if="isTransferAnalyzing"
+              <div v-if="isAnalyzing"
                 class="absolute inset-0 rounded-lg overflow-hidden flex flex-col items-center justify-center"
                 style="background: rgba(248, 250, 252, 0.95)">
                 <div class="text-center">
@@ -846,8 +839,21 @@ function downloadLastReport() {
               <div v-if="uploadDone && uploadedFileName" class="text-xs mb-2" style="color: #27AE60">
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
-              <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ uploadErrorMessage }}
+              <div v-if="uploadError" class="mb-2">
+                <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
+                  class="mt-1" style="font-size: 12px">
+                  <template #title>
+                    <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
+                  </template>
+                  <div class="mt-1 text-xs" style="color: #606266; line-height: 1.6">
+                    {{ uploadFormatHint }}
+                  </div>
+                </el-alert>
+              </div>
+              <div v-if="currentTemplateHint && !uploadError" class="text-[11px] mt-1 mb-1 px-1 py-1.5 rounded"
+                style="color: #909399; background: #F4F4F5; border: 1px dashed #DCDFE6; line-height: 1.5">
+                📋 {{ currentTemplateHint.label }}必填列：{{ currentTemplateHint.columns.join(' | ') }}
               </div>
             </div>
 
@@ -856,12 +862,12 @@ function downloadLastReport() {
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isTransferAnalyzing"
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
               @click="startTransferAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 
-            <div v-if="transferAnalysisDone" class="flex gap-4 mt-4">
+            <div v-if="analysisDone" class="flex gap-4 mt-4">
               <el-button v-if="!lastReportUrl" type="primary" :icon="Document" class="flex-1 h-10 font-semibold"
                 style="background: #1A3A5C; border-color: #1A3A5C" @click="generateReport">
                 生成初步分析报告
@@ -879,7 +885,7 @@ function downloadLastReport() {
         </div>
 
         <div class="col-span-3">
-          <div v-if="!transferAnalysisDone" class="app-card h-full flex flex-col items-center justify-center"
+          <div v-if="!analysisDone" class="app-card h-full flex flex-col items-center justify-center"
             style="min-height: 400px">
             <el-icon :size="64" style="color: #D0D5DD">
               <Money />
@@ -969,7 +975,7 @@ function downloadLastReport() {
         <div class="col-span-2">
           <div class="app-card p-5">
             <div class="flex items-center gap-2 mb-3">
-              <span class="text-sm text-text-secondary">案件编号：</span>
+              <span class="text-sm text-text-secondary">案件名称：</span>
               <el-select v-model="selectedCaseId" placeholder="选择案件" class="!w-[220px]" clearable>
                 <el-option v-for="opt in caseOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
@@ -1000,7 +1006,7 @@ function downloadLastReport() {
               <el-input v-model="logisticsInput" type="textarea" :rows="10"
                 placeholder="粘贴示例格式：&#10;快递单号 | 发件人 | 收件人 | 时间 | 快递公司&#10;SF1234567890 | 刘某某 | 曹某某 | 2024-03-10 | 顺丰速运&#10;..."
                 style="font-family: monospace; font-size: 13px; line-height: 1.8" />
-              <div v-if="isLogisticsAnalyzing"
+              <div v-if="isAnalyzing"
                 class="absolute inset-0 rounded-lg overflow-hidden flex flex-col items-center justify-center"
                 style="background: rgba(248, 250, 252, 0.95)">
                 <div class="text-center">
@@ -1032,18 +1038,31 @@ function downloadLastReport() {
               <div v-if="uploadDone && uploadedFileName" class="text-xs mb-2" style="color: #27AE60">
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
-              <div v-if="uploadError" class="text-xs mb-2" style="color: #C0392B">
-                ✗ {{ uploadErrorMessage }}
+              <div v-if="uploadError" class="mb-2">
+                <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
+                  class="mt-1" style="font-size: 12px">
+                  <template #title>
+                    <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
+                  </template>
+                  <div class="mt-1 text-xs" style="color: #606266; line-height: 1.6">
+                    {{ uploadFormatHint }}
+                  </div>
+                </el-alert>
+              </div>
+              <div v-if="currentTemplateHint && !uploadError" class="text-[11px] mt-1 mb-1 px-1 py-1.5 rounded"
+                style="color: #909399; background: #F4F4F5; border: 1px dashed #DCDFE6; line-height: 1.5">
+                📋 {{ currentTemplateHint.label }}必填列：{{ currentTemplateHint.columns.join(' | ') }}
               </div>
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isLogisticsAnalyzing"
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
               @click="startLogisticsAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 
-            <div v-if="logisticsAnalysisDone" class="flex gap-4 mt-4">
+            <div v-if="analysisDone" class="flex gap-4 mt-4">
               <el-button v-if="!lastReportUrl" type="primary" :icon="Document" class="flex-1 h-10 font-semibold"
                 style="background: #1A3A5C; border-color: #1A3A5C" @click="generateReport">
                 生成初步分析报告
@@ -1061,7 +1080,7 @@ function downloadLastReport() {
         </div>
 
         <div class="col-span-3">
-          <div v-if="!logisticsAnalysisDone" class="app-card h-full flex flex-col items-center justify-center"
+          <div v-if="!analysisDone" class="app-card h-full flex flex-col items-center justify-center"
             style="min-height: 400px">
             <el-icon :size="64" style="color: #D0D5DD">
               <Van />

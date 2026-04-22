@@ -41,6 +41,12 @@ const caseOptions = ref<any[]>([]);
 // 人员台账数据
 const personList = ref<any[]>([]);
 
+// 分页状态
+const fundCurrentPage = ref(1);
+const fundPageSize = ref(10);
+const personCurrentPage = ref(1);
+const personPageSize = ref(10);
+
 const totalFundAmount = computed(() => {
   return fundRecords.value.reduce((sum, item) => sum + (item.amount || 0), 0);
 });
@@ -104,6 +110,7 @@ const fundFilter = ref({
 
 function resetFundFilter() {
   fundFilter.value = { case_no: "", payer: "", payee: "", dateRange: null };
+  fundCurrentPage.value = 1;
   loadFundRecords();
 }
 
@@ -204,6 +211,7 @@ const filteredPersonList = computed(() => {
 
 function resetPersonFilter() {
   personFilter.value = { name: "", role: "", case_no: "" };
+  personCurrentPage.value = 1;
 }
 
 // 导出功能
@@ -294,36 +302,46 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <el-date-picker v-model="fundFilter.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 260px" />
           <el-button @click="resetFundFilter">重置</el-button>
         </div>
-        <el-table :data="fundRecords" stripe size="small" v-loading="fundLoading">
-          <el-table-column prop="case_no" label="案件编号" width="160">
+        <el-table :data="fundRecords.slice((fundCurrentPage - 1) * fundPageSize, fundCurrentPage * fundPageSize)" stripe class="data-table" v-loading="fundLoading">
+          <el-table-column prop="case_no" label="案件名称" min-width="140">
             <template #default="scope">
               <span class="font-mono text-xs text-[#1A3A5C] font-semibold">
                 {{ scope.row.case_no || '未知案件' }}
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="transaction_time" label="日期" width="110" />
-          <el-table-column prop="payer" label="付款方" width="120">
+          <el-table-column prop="transaction_time" label="交易日期" min-width="120" />
+          <el-table-column prop="payer" label="付款方" min-width="120">
             <template #default="scope">
-              <span>{{ isMasked ? maskName(scope.row.payer) : scope.row.payer }}</span>
+              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payer) : scope.row.payer }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="payee" label="收款方" width="120">
+          <el-table-column prop="payee" label="收款方" min-width="120">
             <template #default="scope">
-              <span>{{ isMasked ? maskName(scope.row.payee) : scope.row.payee }}</span>
+              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payee) : scope.row.payee }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="金额" width="130" align="right">
+          <el-table-column label="金额" min-width="140" align="right">
             <template #default="scope">
-              <span class="font-bold text-red-600">¥{{ scope.row.amount.toLocaleString() }}</span>
+              <span class="font-bold text-red-600 text-sm">¥{{ scope.row.amount?.toLocaleString() }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="payment_method" label="渠道" width="110">
+          <el-table-column prop="payment_method" label="支付渠道" min-width="110">
             <template #default="scope">
               <span class="tag-info">{{ scope.row.payment_method }}</span>
             </template>
           </el-table-column>
         </el-table>
+        <div class="flex justify-end mt-4">
+          <el-pagination
+            v-model:current-page="fundCurrentPage"
+            v-model:page-size="fundPageSize"
+            :page-sizes="[10, 20, 50]"
+            :total="fundRecords.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+          />
+        </div>
       </div>
     </div>
 
@@ -369,20 +387,20 @@ async function exportExcel(type: 'persons' | 'transactions') {
           </el-select>
           <el-button @click="resetPersonFilter">重置</el-button>
         </div>
-        <el-table :data="filteredPersonList" stripe size="small" v-loading="personLoading">
-          <el-table-column label="关联案件" width="160">
+        <el-table :data="filteredPersonList.slice((personCurrentPage - 1) * personPageSize, personCurrentPage * personPageSize)" stripe class="data-table" v-loading="personLoading">
+          <el-table-column label="关联案件" min-width="140">
             <template #default="scope">
               <span class="font-mono text-xs text-[#1A3A5C] font-semibold">
                 {{ scope.row.case_no || personFilter.case_no || (scope.row.linked_cases > 1 ? `涉及 ${scope.row.linked_cases} 个案件` : (scope.row.linked_cases === 1 ? '单案关联' : '未知案件')) }}
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="name" label="姓名" width="120">
+          <el-table-column prop="name" label="姓名" min-width="110">
             <template #default="scope">
               <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.name) : scope.row.name }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="role" label="角色" width="130">
+          <el-table-column prop="role" label="角色" min-width="120">
             <template #default="scope">
               <span
                 class="px-2 py-1 rounded text-xs font-semibold"
@@ -395,7 +413,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="is_authorized" label="是否授权" width="100" align="center">
+          <el-table-column prop="is_authorized" label="是否授权" min-width="90" align="center">
             <template #default="scope">
               <span class="px-2 py-1 rounded text-xs font-semibold" :style="{
                 background: scope.row.is_authorized ? '#F0FAF0' : '#FDECEA',
@@ -405,17 +423,17 @@ async function exportExcel(type: 'persons' | 'transactions') {
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="subjective_knowledge_score" label="主观明知评分" width="120" align="center">
+          <el-table-column prop="subjective_knowledge_score" label="主观明知评分" min-width="110" align="center">
             <template #default="scope">
               <span class="font-semibold text-[#1A3A5C]">{{ scope.row.subjective_knowledge_score }}/10</span>
             </template>
           </el-table-column>
-          <el-table-column label="涉案金额" width="130" align="right">
+          <el-table-column label="涉案金额" min-width="130" align="right">
             <template #default="scope">
-              <span class="font-bold text-red-600">¥{{ scope.row.illegal_business_amount.toLocaleString() }}</span>
+              <span class="font-bold text-red-600">¥{{ scope.row.illegal_business_amount?.toLocaleString() }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="linked_cases" label="关联案件数" width="110" align="center">
+          <el-table-column prop="linked_cases" label="关联案件数" min-width="100" align="center">
             <template #default="scope">
               <span
                 class="font-semibold"
@@ -424,7 +442,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
             </template>
           </el-table-column>
 
-          <el-table-column label="案件门槛判定" width="150" align="center">
+          <el-table-column label="案件门槛判定" min-width="130" align="center">
             <template #default="{ row }">
               <span 
                 class="px-2 py-0.5 rounded text-[10px] font-bold border"
@@ -439,6 +457,16 @@ async function exportExcel(type: 'persons' | 'transactions') {
             </template>
           </el-table-column>
         </el-table>
+        <div class="flex justify-end mt-4">
+          <el-pagination
+            v-model:current-page="personCurrentPage"
+            v-model:page-size="personPageSize"
+            :page-sizes="[10, 20, 50]"
+            :total="filteredPersonList.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+          />
+        </div>
       </div>
     </div>
 

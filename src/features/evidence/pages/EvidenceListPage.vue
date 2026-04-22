@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessage } from "element-plus";
-import { Search, Download, Upload } from "@element-plus/icons-vue";
+import { Search, Download } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
 import { maskName } from "@/utils/masking";
 
 const searchText = ref("");
 const filterType = ref("");
 const loading = ref(false);
+const currentPage = ref(1);
+const pageSize = ref(10);
 
 const cluesList = ref<any[]>([]);
 const stats = ref({
@@ -60,6 +62,7 @@ const filteredList = computed(() => {
 function resetFilter() {
   searchText.value = "";
   filterType.value = "";
+  currentPage.value = 1;
 }
 
 onMounted(() => {
@@ -131,14 +134,12 @@ onMounted(() => {
       </div>
 
       <el-table 
-        :data="filteredList" 
+        :data="filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize)" 
         stripe 
-        size="default" 
-        class="w-full custom-table" 
+        class="data-table" 
         v-loading="loading"
-        :header-cell-style="{ background: '#F8FAFC', color: '#64748B', fontWeight: '600' }"
       >
-        <el-table-column prop="clue_type" label="线索类型" width="130">
+        <el-table-column prop="clue_type" label="线索类型" min-width="120">
           <template #default="{ row }">
             <span
               class="px-3 py-1 rounded text-xs font-bold"
@@ -151,12 +152,12 @@ onMounted(() => {
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="evidence_text" label="线索内容" min-width="250" show-overflow-tooltip>
+        <el-table-column prop="evidence_text" label="线索内容" min-width="280" show-overflow-tooltip>
           <template #default="scope">
             <span class="text-[#334155] leading-relaxed">{{ scope.row.evidence_text }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="关键特征" min-width="150">
+        <el-table-column label="关键特征" min-width="160">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1.5">
               <span 
@@ -176,31 +177,39 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="score" label="风险指数" width="100" align="center">
+        <el-table-column prop="score" label="风险指数" min-width="100" align="center">
           <template #default="{ row }">
             <span class="font-black text-sm" :class="row.score >= 8 ? 'text-red-600' : 'text-orange-600'">{{ row.score }}/10</span>
           </template>
         </el-table-column>
-        <el-table-column prop="severity_level" label="严重程度" width="120">
+        <el-table-column prop="severity_level" label="严重程度" min-width="110">
           <template #default="{ row }">
-            <span :class="row.severity_level === '刑事犯罪' ? 'text-red-600 font-bold' : 'text-gray-600'">{{ row.severity_level }}</span>
+            <span
+              class="px-2 py-0.5 rounded text-xs font-bold"
+              :style="{
+                background: row.severity_level === '刑事犯罪' ? '#FEF2F2' : '#F0FDF4',
+                color: row.severity_level === '刑事犯罪' ? '#DC2626' : '#16A34A',
+              }"
+            >{{ row.severity_level }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="crime_type" label="涉嫌罪名" min-width="180" show-overflow-tooltip>
+        <el-table-column prop="crime_type" label="涉嫌罪名" min-width="200" show-overflow-tooltip>
           <template #default="scope">
             <span class="text-gray-600 italic text-sm">{{ scope.row.crime_type }}</span>
           </template>
         </el-table-column>
       </el-table>
+      <div class="flex justify-end mt-4">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredList.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+        />
+      </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-.custom-table :deep(.el-table__row) {
-  height: 60px;
-}
-.custom-table :deep(.el-table__cell) {
-  padding: 12px 0;
-}
-</style>

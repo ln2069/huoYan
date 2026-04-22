@@ -1,8 +1,13 @@
 import { createRouter, createWebHistory } from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
-
 const routes: RouteRecordRaw[] = [
-  { path: "/", redirect: "/cases" },
+  {
+    path: "/login",
+    name: "login",
+    component: () => import("@/features/auth/pages/LoginPage.vue"),
+    meta: { public: true }
+  },
+  { path: "/", redirect: "/dashboard" },
   {
     path: "/dashboard",
     name: "dashboard",
@@ -92,4 +97,24 @@ export const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior: () => ({ left: 0, top: 0 }),
+});
+
+// 全局路由守卫：实现坚固的鉴权逻辑
+router.beforeEach((to, from, next) => {
+  const isLogged = !!localStorage.getItem('basic_auth_username');
+  
+  // 1. 如果是公共页面（如登录页），且已登录，直接跳转主页
+  if (to.meta.public && isLogged) {
+    next('/dashboard');
+    return;
+  }
+
+  // 2. 如果不是公共页面，且未登录，强制重定向至登录页
+  if (!to.meta.public && !isLogged) {
+    next('/login');
+    return;
+  }
+
+  // 3. 其他情况正常通行
+  next();
 });

@@ -15,13 +15,15 @@ import {
   ElMessage,
   ElFormRules,
   ElLoading,
+  ElPagination,
 } from "element-plus";
-import { Document, Plus, Edit, Delete, Download, Share } from "@element-plus/icons-vue";
+import { Plus, Edit, Delete, Download, Share, Search } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
 import { get, post } from "@/services/api/client";
 import type { CaseSummary } from "@/entities/case";
 import { PrimaryButton, TabButton } from "@/shared/components";
 import { useReportStore } from "@/shared/stores/reportStore";
+import { maskName } from "@/utils/masking";
 
 const router = useRouter();
 const dialogOpen = ref(false);
@@ -29,6 +31,8 @@ const addDialogOpen = ref(false);
 const detailTab = ref("chat");
 const currentCase = ref<CaseSummary | null>(null);
 const caseFilter = ref({ case_no: "", suspect_name: "", brand: "" });
+const currentPage = ref(1);
+const pageSize = ref(10);
 const cases = ref<CaseSummary[]>([]);
 const detailData = ref<any>(null);
 const loading = ref(false);
@@ -40,12 +44,6 @@ const keyActors = ref<any[]>([]);
 const actorsLoading = ref(false);
 const isMasked = ref(true);
 const reportStore = useReportStore();
-
-function maskName(name: string) {
-  if (!name) return "";
-  if (name.length <= 1) return name;
-  return name.charAt(0) + "*".repeat(name.length - 1);
-}
 
 const lastReportUrl = computed(() => {
   if (!currentCase.value) return "";
@@ -96,7 +94,7 @@ const editCaseFormRef = ref();
 // 表单验证规则
 const addCaseRules = ref<ElFormRules>({
   case_no: [
-    { required: true, message: "请输入案件编号", trigger: "blur" },
+    { required: true, message: "请输入案件名称", trigger: "blur" },
   ],
   suspect_name: [
     { required: true, message: "请输入嫌疑人姓名", trigger: "blur" },
@@ -389,7 +387,7 @@ onMounted(() => {
   <div class="space-y-5">
     <div class="app-card p-5">
       <el-form :inline="true" size="default" class="flex flex-wrap items-center">
-        <el-form-item label="案件编号" class="!mb-0">
+        <el-form-item label="案件名称" class="!mb-0">
           <el-input v-model="caseFilter.case_no" placeholder="如：CASE001" class="!w-[180px]" @keyup.enter="loadCases" />
         </el-form-item>
         <el-form-item label="嫌疑人" class="!mb-0">
@@ -412,21 +410,21 @@ onMounted(() => {
       <div class="flex justify-between items-center mb-4">
         <div class="card-title !mb-0">案件列表（共 {{ cases.length }} 件）</div>
       </div>
-      <el-table :data="cases" stripe class="w-full" @row-click="openDetail" v-loading="loading">
-        <el-table-column prop="case_no" label="案件编号" width="180" />
-        <el-table-column prop="suspect_name" label="主要嫌疑人" width="140" />
-        <el-table-column prop="brand" label="涉案品牌" width="160" />
-        <el-table-column label="涉案金额" width="120" align="right">
+      <el-table :data="cases.slice((currentPage - 1) * pageSize, currentPage * pageSize)" stripe class="data-table" @row-click="openDetail" v-loading="loading">
+        <el-table-column prop="case_no" label="案件名称" min-width="160" />
+        <el-table-column prop="suspect_name" label="主要嫌疑人" min-width="130" />
+        <el-table-column prop="brand" label="涉案品牌" min-width="150" />
+        <el-table-column label="涉案金额" min-width="130" align="right">
           <template #default="{ row }">
-            <span class="font-semibold text-red-600">{{ row.amount }}元</span>
+            <span class="font-semibold text-red-600">¥{{ row.amount?.toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="160">
+        <el-table-column label="创建时间" min-width="160">
           <template #default="{ row }">
             {{ dayjs(row.created_at).format('YYYY-MM-DD HH:mm') }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="130">
+        <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" class="!text-[#1A3A5C] !font-semibold" @click.stop="openDetail(row)">
               查看详情 →
@@ -434,6 +432,16 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
+      <div class="flex justify-end mt-4">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="cases.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogOpen" :title="'案件详情 — ' + (currentCase?.case_no ?? '')" width="900px" :append-to-body="true">
@@ -621,7 +629,7 @@ onMounted(() => {
     <!-- 新增案件弹窗 -->
     <el-dialog v-model="addDialogOpen" title="录入新案件" width="500px" :append-to-body="true">
       <el-form :model="addCaseForm" :rules="addCaseRules" label-width="100px">
-        <el-form-item label="案件编号" prop="case_no">
+        <el-form-item label="案件名称" prop="case_no">
           <el-input v-model="addCaseForm.case_no" placeholder="如：CASE001" />
         </el-form-item>
         <el-form-item label="嫌疑人姓名" prop="suspect_name">

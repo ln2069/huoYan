@@ -3,7 +3,10 @@ import { computed, ref, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { RouterLink, RouterView } from "vue-router";
 import { get } from "@/services/api/client";
+import { ElMessage } from "element-plus";
+import AuthDialog from "@/shared/components/AuthDialog.vue";
 import {
+  User,
   DataBoard,
   FolderOpened,
   Cpu,
@@ -19,8 +22,19 @@ const activePath = computed(() => route.path);
 const expandedNav = ref<string | null>(null);
 const criminalCluesCount = ref(0);
 
+// 注销逻辑
+function handleLogout() {
+  localStorage.removeItem('basic_auth_username');
+  localStorage.removeItem('basic_auth_password');
+  localStorage.removeItem('user_info');
+  ElMessage.success('已安全退出系统');
+  router.push('/login');
+}
+
 // Fetch criminal-level clue count for notification badge (#19)
 onMounted(async () => {
+  if (route.path === '/login' || !localStorage.getItem('basic_auth_username')) return;
+  
   try {
     const cases = await get<any[]>('/cases?limit=500');
     const caseList = Array.isArray(cases) ? cases : ((cases as any)?.list || []);
@@ -110,7 +124,13 @@ function handleParentNavClick(parentPath: string) {
 </script>
 
 <template>
-  <div class="h-full">
+  <!-- 如果是登录页，直接渲染内容，不显示侧边栏和头部 -->
+  <div v-if="route.path === '/login'" class="h-full w-full">
+    <RouterView />
+  </div>
+
+  <div v-else class="h-full flex flex-col">
+    <!-- 头部：火眼智擎 -->
     <header
       class="h-[60px] flex items-center justify-between px-6 flex-shrink-0"
       style="background-color: #1E4060"
@@ -129,14 +149,27 @@ function handleParentNavClick(parentPath: string) {
             style="background: rgba(255,255,255,0.15); border: none; color: white"
           />
         </el-badge>
-        <div class="flex items-center gap-2 cursor-pointer">
-          <el-avatar :size="32" style="background: #C0392B; font-weight: 700">李</el-avatar>
-          <span class="text-sm font-semibold text-white">检察官 李明</span>
-        </div>
+        
+        <!-- 用户信息与注销 -->
+        <el-dropdown trigger="click">
+          <div class="flex items-center gap-2 cursor-pointer outline-none">
+            <el-avatar :size="32" style="background: #C0392B; font-weight: 700">李</el-avatar>
+            <span class="text-sm font-semibold text-white">检察官 李明</span>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item :icon="User">个人中心</el-dropdown-item>
+              <el-dropdown-item divided style="color: #F56C6C" @click="handleLogout">
+                退出登录
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </header>
 
-    <div class="grid grid-cols-[220px_1fr]">
+    <div class="flex-1 grid grid-cols-[220px_1fr] overflow-hidden">
+      <!-- 侧边导航栏 -->
       <aside class="py-4 flex flex-col" style="background-color: #152F4A">
         <nav class="flex-1 px-2">
           <div v-for="item in nav" :key="item.to">
@@ -199,8 +232,9 @@ function handleParentNavClick(parentPath: string) {
         </div>
       </aside>
 
-      <main class="scroll-area p-6" style="background-color: #E8EEF4">
-        <div class="max-w-[1200px] mx-auto">
+      <!-- 主视图区域 -->
+      <main class="scroll-area p-6 overflow-y-auto" style="background-color: #E8EEF4">
+        <div class="w-full max-w-[1600px] mx-auto">
           <RouterView />
         </div>
       </main>

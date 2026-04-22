@@ -167,6 +167,53 @@
   }
 
   .table-row:hover { background-color: #F5F8FA; cursor: pointer; }
+
+  /* ========= 全局统一表格风格 ========= */
+  .data-table {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .data-table .el-table__header-wrapper th {
+    background: #F0F4F8 !important;
+    color: #4A5568 !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    padding: 14px 12px !important;
+    border-bottom: 2px solid #E2E8F0 !important;
+    letter-spacing: 0.3px;
+  }
+  .data-table .el-table__row {
+    height: 54px;
+    transition: background 0.15s;
+  }
+  .data-table .el-table__row td {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    color: #334155 !important;
+    border-bottom-color: #F1F5F9 !important;
+  }
+  .data-table .el-table__row:hover > td {
+    background: #F7FAFC !important;
+  }
+  .data-table .el-table--striped .el-table__body tr.el-table__row--striped td {
+    background: #FAFCFE !important;
+  }
+  /* 重点金额列 */
+  .data-table .col-amount {
+    font-weight: 700;
+    color: #C0392B !important;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  /* 重点标签列 */
+  .data-table .col-tag {
+    display: inline-flex;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
 }
 
 @layer utilities {
@@ -174,4 +221,12 @@
     height: calc(100vh - 60px);
     overflow-y: auto;
   }
+}
+
+/* 分页器品牌色 */
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: #1A3A5C !important;
+}
+.el-pagination.is-background .el-pager li:hover {
+  color: #1A3A5C !important;
 }

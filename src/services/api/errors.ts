@@ -22,3 +22,12 @@ export class ValidationError extends Error {
     this.name = "ValidationError";
   }
 }
+
+export class TableFormatError extends ValidationError {
+  detail: string;
+  constructor(message: string) {
+    super(message);
+    this.name = "TableFormatError";
+    this.detail = message;
+  }
+}
