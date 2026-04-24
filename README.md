@@ -36,7 +36,7 @@ docker compose up -d --build
   - 仅启动 `frontend` 服务，不再依赖本地后端镜像。
   - 通过环境变量传递后端上游：
     - `BACKEND_HOST`（默认 `huoyan_backend`）
-    - `BACKEND_PORT`（默认 `8000`）
+    - `BACKEND_PORT`（默认 `8001`）
 - `nginx.conf`
   - `/api` 代理到 `http://${BACKEND_HOST}:${BACKEND_PORT}/api/`
 
@@ -46,7 +46,7 @@ docker compose up -d --build
 
 ```env
 BACKEND_HOST=your_backend_container_name
-BACKEND_PORT=8000
+BACKEND_PORT=8001
 ```
 
 然后重建前端：
@@ -67,7 +67,7 @@ docker compose down
 
 ## 联通自检
 
-1. 后端健康检查可用：`http://<后端地址>:8000/health`
+1. 后端健康检查可用：`http://<后端地址>:8001/health`
 2. 前端页面可打开：`http://<前端地址>:3000`
 3. 浏览器 Network 中业务请求均以 `/api/...` 发出
 4. 登录成功后可访问案件列表，并可导出 CSV

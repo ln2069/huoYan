@@ -4,7 +4,7 @@ services:
     container_name: huoyan_frontend
     environment:
       BACKEND_HOST: ${BACKEND_HOST:-huoyan_backend}
-      BACKEND_PORT: ${BACKEND_PORT:-8000}
+      BACKEND_PORT: ${BACKEND_PORT:-8001}
     ports:
       - "3000:80"
     networks:
