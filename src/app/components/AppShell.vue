@@ -4,7 +4,6 @@ import { useRoute, useRouter } from "vue-router";
 import { RouterLink, RouterView } from "vue-router";
 import { get } from "@/services/api/client";
 import { ElMessage } from "element-plus";
-import AuthDialog from "@/shared/components/AuthDialog.vue";
 import {
   User,
   DataBoard,
@@ -34,7 +33,7 @@ function handleLogout() {
 // Fetch criminal-level clue count for notification badge (#19)
 onMounted(async () => {
   if (route.path === '/login' || !localStorage.getItem('basic_auth_username')) return;
-  
+
   try {
     const cases = await get<any[]>('/cases?limit=500');
     const caseList = Array.isArray(cases) ? cases : ((cases as any)?.list || []);
@@ -49,10 +48,10 @@ onMounted(async () => {
           ...(s.role_clues || []),
         ];
         count += all.filter((x: any) => x.severity_level === '刑事犯罪').length;
-      } catch {}
+      } catch { }
     }
     criminalCluesCount.value = count;
-  } catch {}
+  } catch { }
 });
 
 const nav = [
@@ -131,10 +130,7 @@ function handleParentNavClick(parentPath: string) {
 
   <div v-else class="h-full flex flex-col">
     <!-- 头部：火眼智擎 -->
-    <header
-      class="h-[60px] flex items-center justify-between px-6 flex-shrink-0"
-      style="background-color: #1E4060"
-    >
+    <header class="h-[60px] flex items-center justify-between px-6 flex-shrink-0" style="background-color: #1E4060">
       <div class="flex items-center gap-2">
         <span class="text-2xl">🔥</span>
         <span class="text-xl font-bold tracking-tight text-white">火眼智擎</span>
@@ -142,14 +138,10 @@ function handleParentNavClick(parentPath: string) {
       </div>
       <div class="flex items-center gap-4">
         <el-badge :value="criminalCluesCount > 0 ? criminalCluesCount : null" type="danger">
-          <el-button
-            :icon="Bell"
-            circle
-            size="small"
-            style="background: rgba(255,255,255,0.15); border: none; color: white"
-          />
+          <el-button :icon="Bell" circle size="small"
+            style="background: rgba(255,255,255,0.15); border: none; color: white" />
         </el-badge>
-        
+
         <!-- 用户信息与注销 -->
         <el-dropdown trigger="click">
           <div class="flex items-center gap-2 cursor-pointer outline-none">
@@ -173,53 +165,37 @@ function handleParentNavClick(parentPath: string) {
       <aside class="py-4 flex flex-col" style="background-color: #152F4A">
         <nav class="flex-1 px-2">
           <div v-for="item in nav" :key="item.to">
-            <RouterLink
-              v-if="!item.children"
-              :to="item.to"
+            <RouterLink v-if="!item.children" :to="item.to"
               class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm mb-0.5 transition-all"
-              style="color: rgba(255,255,255,0.75)"
-              :class="
-                activePath === item.to
+              style="color: rgba(255,255,255,0.75)" :class="activePath === item.to
                   ? 'bg-white/[0.15] font-semibold !text-white border-l-[3px] !border-l-[#C0392B]'
                   : 'hover:bg-white/[0.08] !text-white'
-              "
-            >
+                ">
               <component :is="item.icon" class="w-4 h-4 opacity-80" />
               <span>{{ item.label }}</span>
             </RouterLink>
-            
+
             <div v-else class="mb-0.5">
-              <div
-                class="flex items-center px-3 py-2.5 rounded-md text-sm cursor-pointer transition-all"
-                :class="
-                  isParentActive(item.to)
-                    ? 'bg-white/[0.15] font-semibold !text-white border-l-[3px] !border-l-[#C0392B]'
-                    : activePath === item.to
+              <div class="flex items-center px-3 py-2.5 rounded-md text-sm cursor-pointer transition-all" :class="isParentActive(item.to)
+                  ? 'bg-white/[0.15] font-semibold !text-white border-l-[3px] !border-l-[#C0392B]'
+                  : activePath === item.to
                     ? 'bg-white/[0.15] font-semibold !text-white border-l-[3px] !border-l-[#C0392B]'
                     : 'hover:bg-white/[0.08] !text-white'
-                "
-                @click="handleParentNavClick(item.to)"
-              >
+                " @click="handleParentNavClick(item.to)">
                 <div class="flex items-center gap-2">
                   <component :is="item.icon" class="w-4 h-4 opacity-80" />
                   <span>{{ item.label }}</span>
                 </div>
               </div>
-              
+
               <transition name="slide-fade" appear>
                 <div v-if="expandedNav === item.to" class="pl-8 mt-1 mb-2 overflow-hidden">
-                  <RouterLink
-                    v-for="child in item.children"
-                    :key="child.to"
-                    :to="child.to"
+                  <RouterLink v-for="child in item.children" :key="child.to" :to="child.to"
                     class="flex items-center gap-2 px-3 py-2 rounded-md text-sm mb-1 transition-all duration-300 ease-in-out"
-                    style="color: rgba(255,255,255,0.75)"
-                    :class="
-                      activePath === child.to
+                    style="color: rgba(255,255,255,0.75)" :class="activePath === child.to
                         ? 'bg-white/[0.1] font-semibold !text-white'
                         : 'hover:bg-white/[0.08] !text-white'
-                    "
-                  >
+                      ">
                     <span>{{ child.label }}</span>
                   </RouterLink>
                 </div>
@@ -249,21 +225,25 @@ function handleParentNavClick(parentPath: string) {
   overflow: hidden;
   max-height: 200px;
 }
+
 .slide-fade-enter-from {
   transform: translateY(-10px);
   opacity: 0;
   max-height: 0;
 }
+
 .slide-fade-enter-to {
   transform: translateY(0);
   opacity: 1;
   max-height: 200px;
 }
+
 .slide-fade-leave-from {
   transform: translateY(0);
   opacity: 1;
   max-height: 200px;
 }
+
 .slide-fade-leave-to {
   transform: translateY(-10px);
   opacity: 0;
@@ -294,6 +274,7 @@ function handleParentNavClick(parentPath: string) {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -301,7 +282,15 @@ function handleParentNavClick(parentPath: string) {
 }
 
 /* 为子菜单项添加交错动画效果 */
-.router-link:nth-child(1) { animation-delay: 0.05s; }
-.router-link:nth-child(2) { animation-delay: 0.1s; }
-.router-link:nth-child(3) { animation-delay: 0.15s; }
+.router-link:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.router-link:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.router-link:nth-child(3) {
+  animation-delay: 0.15s;
+}
 </style>

@@ -442,13 +442,21 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     }
 
     await startAnalysis();
+    await loadCases();
+
+    const inferenceParts = [
+      response.case_amount !== undefined ? `金额 ${response.case_amount}` : "",
+      response.case_suspect_name ? `嫌疑人 ${response.case_suspect_name}` : "",
+      response.case_brand ? `品牌 ${response.case_brand}` : "",
+    ].filter(Boolean);
+    const inferenceText = inferenceParts.length > 0 ? `，案件已自动更新：${inferenceParts.join('，')}` : "";
 
     if (evidenceType === "chat") {
-      ElMessage.success(`通讯记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`通讯记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${inferenceText}`);
     } else if (evidenceType === "transfer") {
-      ElMessage.success(`资金流水「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`资金流水「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${inferenceText}`);
     } else {
-      ElMessage.success(`物流记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`物流记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${inferenceText}`);
     }
   } catch (error) {
     // 表格格式校验错误 — 专项友好提示
@@ -590,8 +598,8 @@ function downloadLastReport() {
               </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -841,8 +849,8 @@ function downloadLastReport() {
               </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -862,8 +870,7 @@ function downloadLastReport() {
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
-              @click="startTransferAnalysis">
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing" @click="startTransferAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 
@@ -1040,8 +1047,8 @@ function downloadLastReport() {
               </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -1057,8 +1064,7 @@ function downloadLastReport() {
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
-              @click="startLogisticsAnalysis">
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing" @click="startLogisticsAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 

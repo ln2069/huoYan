@@ -13,28 +13,24 @@ export interface ListCasesRequest {
 
 export interface CreateCaseRequest {
   case_no: string;
-  suspect_name: string;
-  brand: string;
-  amount: number;
 }
 
-export interface UpdateCaseRequest {
-  suspect_name: string;
-  brand: string;
-  amount: number;
-}
+export interface UpdateCaseRequest {}
 
 export type ListCasesResponse = ApiResult<PagedResult<CaseSummary>>;
 export type GetCaseDetailResponse = ApiResult<CaseDetail>;
 export type CreateCaseResponse = ApiResult<CaseSummary>;
 export type UpdateCaseResponse = ApiResult<CaseSummary>;
+export type InferCaseFieldsResponse = ApiResult<CaseSummary>;
 
 export interface CasesRepository {
   listCases(req: ListCasesRequest): Promise<ListCasesResponse>;
   getCaseDetail(caseId: string): Promise<GetCaseDetailResponse>;
+  getSuspiciousClues(caseId: string): Promise<any>;
   createCase(req: CreateCaseRequest): Promise<CreateCaseResponse>;
   updateCase(caseId: string, req: UpdateCaseRequest): Promise<UpdateCaseResponse>;
-  deleteCase(caseId: string): Promise<ApiResult<null>>;
+  inferFields(caseId: string): Promise<InferCaseFieldsResponse>;
+  deleteCase(caseId: string): Promise<any>;
   getCaseSuspicious(caseId: string): Promise<any>;
   getClueDetail(clueId: string): Promise<any>;
 }

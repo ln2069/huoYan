@@ -12,8 +12,8 @@ export function createApiRelationsRepository(): RelationsRepository {
     async getFundFlows(req?: any) {
       return get("/ledger/transactions", { params: req });
     },
-    async getPersonLedger() {
-      return get("/ledger/persons");
+    async getPersonLedger(req?: any) {
+      return get("/ledger/persons", { params: req });
     },
     async getRecidivism(personName: string) {
       return get(`/relations/recidivism/${personName}`);

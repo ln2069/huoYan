@@ -55,6 +55,10 @@ function createClient(): AxiosInstance {
         }
         return Promise.reject(new ValidationError(serverMessage ?? "参数错误"));
       }
+      if (status === 422) {
+        const detail = data?.detail ?? data?.message ?? "";
+        return Promise.reject(new ValidationError(detail || "请求字段与最新后端契约不一致，请更新前端请求体"));
+      }
       if (status === 401) {
         // 清除无效凭据
         localStorage.removeItem("basic_auth_username");

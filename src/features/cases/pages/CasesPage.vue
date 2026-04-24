@@ -8,16 +8,13 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElOption,
-  ElSelect,
   ElTable,
   ElTableColumn,
   ElMessage,
-  ElFormRules,
-  ElLoading,
   ElPagination,
+  type FormRules,
 } from "element-plus";
-import { Plus, Edit, Delete, Download, Share, Search } from "@element-plus/icons-vue";
+import { Plus, Delete, Download, Share, Refresh } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
 import { get, post } from "@/services/api/client";
 import type { CaseSummary } from "@/entities/case";
@@ -43,6 +40,7 @@ const linkedCasesCount = ref(0);
 const keyActors = ref<any[]>([]);
 const actorsLoading = ref(false);
 const isMasked = ref(true);
+const inferenceLoading = ref(false);
 const reportStore = useReportStore();
 
 const lastReportUrl = computed(() => {
@@ -70,55 +68,16 @@ function highlightText(text: string) {
 // 新增案件表单数据
 const addCaseForm = ref({
   case_no: "",
-  suspect_name: "",
-  brand: "",
-  amount: 0,
 });
-
-// 表单引用
-const addCaseFormRef = ref();
 
 // 修改案件弹窗控制
 const editDialogOpen = ref(false);
 
 // 修改案件表单数据
-const editCaseForm = ref({
-  suspect_name: "",
-  brand: "",
-  amount: 0,
-});
-
-// 表单引用
-const editCaseFormRef = ref();
-
 // 表单验证规则
-const addCaseRules = ref<ElFormRules>({
+const addCaseRules = ref<FormRules>({
   case_no: [
     { required: true, message: "请输入案件名称", trigger: "blur" },
-  ],
-  suspect_name: [
-    { required: true, message: "请输入嫌疑人姓名", trigger: "blur" },
-  ],
-  brand: [
-    { required: true, message: "请选择涉案品牌", trigger: "change" },
-  ],
-  amount: [
-    { required: true, message: "请输入涉案金额", trigger: "blur" },
-    { type: "number", min: 0, message: "涉案金额必须大于等于0", trigger: "blur" },
-  ],
-});
-
-// 修改案件表单验证规则
-const editCaseRules = ref<ElFormRules>({
-  suspect_name: [
-    { required: true, message: "请输入嫌疑人姓名", trigger: "blur" },
-  ],
-  brand: [
-    { required: true, message: "请输入涉案品牌", trigger: "blur" },
-  ],
-  amount: [
-    { required: true, message: "请输入涉案金额", trigger: "blur" },
-    { type: "number", min: 0, message: "涉案金额必须大于等于0", trigger: "blur" },
   ],
 });
 
@@ -172,7 +131,7 @@ async function loadCaseDetail(caseId: string) {
   }
 }
 
-async function loadRelations(caseId: string) {
+async function loadRelations(_caseId: string) {
   // 不再在该弹窗中预加载关系数据，改为点击跳转
   chainData.value = null;
 }
@@ -229,7 +188,7 @@ async function generateReport() {
   try {
     const res = await post<any>('/report/generate', null, { params: { case_id: currentCase.value.id } });
     const data = res?.data || res;
-    
+
     if (data?.success || data?.report_id) {
       ElMessage.success(data.message || "报告生成成功！");
       reportStore.setReport(currentCase.value.id, data.download_url, data.report_id);
@@ -278,9 +237,6 @@ function resetFilter() {
 function openAddDialog() {
   addCaseForm.value = {
     case_no: "",
-    suspect_name: "",
-    brand: "",
-    amount: 0,
   };
   addDialogOpen.value = true;
 }
@@ -294,58 +250,57 @@ async function submitAddCase() {
       // 标准格式的情况
       ElMessage.success("案件添加成功");
       addDialogOpen.value = false;
-      loadCases(); // 重新加载案件列表
+      loadCases();
     } else if (response) {
       // 直接返回数据的情况
       ElMessage.success("案件添加成功");
       addDialogOpen.value = false;
-      loadCases(); // 重新加载案件列表
+      loadCases();
     } else {
       ElMessage.error("添加案件失败");
     }
   } catch (error) {
-    ElMessage.error("添加案件失败，请稍后重试");
+    ElMessage.error(error instanceof Error ? error.message : "添加案件失败，请稍后重试");
     console.error("添加案件失败:", error);
   }
 }
 
 // 打开修改弹窗
 function openEditDialog() {
-  if (currentCase.value) {
-    editCaseForm.value = {
-      suspect_name: currentCase.value.suspect_name,
-      brand: currentCase.value.brand,
-      amount: currentCase.value.amount,
-    };
-    editDialogOpen.value = true;
-  }
+  if (!currentCase.value) return;
+  editDialogOpen.value = true;
 }
 
-// 提交修改案件
+// 刷新推导字段
 async function submitEditCase() {
   try {
     if (!currentCase.value) return;
-    
-    const response = await repositories.cases.updateCase(currentCase.value.id.toString(), editCaseForm.value);
-    // 处理不同的响应格式
+
+    inferenceLoading.value = true;
+    const response = await repositories.cases.inferFields(currentCase.value.id.toString());
+
     if (response.code === 0) {
-      // 标准格式的情况
-      ElMessage.success("案件修改成功");
+      ElMessage.success("案件信息已刷新");
       editDialogOpen.value = false;
-      loadCases(); // 重新加载案件列表
-      loadCaseDetail(currentCase.value.id.toString()); // 重新加载案件详情
+      await loadCases();
+      await loadCaseDetail(currentCase.value.id.toString());
+      currentCase.value = {
+        ...currentCase.value,
+        ...response.data!,
+      };
     } else if (response) {
-      // 直接返回数据的情况
-      ElMessage.success("案件修改成功");
+      ElMessage.success("案件信息已刷新");
       editDialogOpen.value = false;
-      loadCases(); // 重新加载案件列表
-      loadCaseDetail(currentCase.value.id.toString()); // 重新加载案件详情
+      await loadCases();
+      await loadCaseDetail(currentCase.value.id.toString());
     } else {
-      ElMessage.error("修改案件失败");
+      ElMessage.error("刷新案件信息失败");
     }
   } catch (error) {
-    ElMessage.error("修改案件失败，请稍后重试");
-    console.error("修改案件失败:", error);
+    ElMessage.error(error instanceof Error ? error.message : "刷新案件信息失败，请稍后重试");
+    console.error("刷新案件信息失败:", error);
+  } finally {
+    inferenceLoading.value = false;
   }
 }
 
@@ -353,18 +308,26 @@ async function submitEditCase() {
 async function deleteCase() {
   try {
     if (!currentCase.value) return;
-    
+
     const response = await repositories.cases.deleteCase(currentCase.value.id.toString());
     // 处理不同的响应格式
     if (response.code === 0) {
       // 标准格式的情况
       ElMessage.success("案件删除成功");
       dialogOpen.value = false;
+      currentCase.value = null;
+      detailData.value = null;
+      chainData.value = null;
+      keyActors.value = [];
       loadCases(); // 重新加载案件列表
     } else if (response) {
       // 直接返回数据的情况
       ElMessage.success("案件删除成功");
       dialogOpen.value = false;
+      currentCase.value = null;
+      detailData.value = null;
+      chainData.value = null;
+      keyActors.value = [];
       loadCases(); // 重新加载案件列表
     } else {
       ElMessage.error("删除案件失败");
@@ -410,7 +373,8 @@ onMounted(() => {
       <div class="flex justify-between items-center mb-4">
         <div class="card-title !mb-0">案件列表（共 {{ cases.length }} 件）</div>
       </div>
-      <el-table :data="cases.slice((currentPage - 1) * pageSize, currentPage * pageSize)" stripe class="data-table" @row-click="openDetail" v-loading="loading">
+      <el-table :data="cases.slice((currentPage - 1) * pageSize, currentPage * pageSize)" stripe class="data-table"
+        @row-click="openDetail" v-loading="loading">
         <el-table-column prop="case_no" label="案件名称" min-width="160" />
         <el-table-column prop="suspect_name" label="主要嫌疑人" min-width="130" />
         <el-table-column prop="brand" label="涉案品牌" min-width="150" />
@@ -433,24 +397,19 @@ onMounted(() => {
         </el-table-column>
       </el-table>
       <div class="flex justify-end mt-4">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50]"
-          :total="cases.length"
-          layout="total, sizes, prev, pager, next, jumper"
-          background
-        />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10, 20, 50]"
+          :total="cases.length" layout="total, sizes, prev, pager, next, jumper" background />
       </div>
     </div>
 
-    <el-dialog v-model="dialogOpen" :title="'案件详情 — ' + (currentCase?.case_no ?? '')" width="900px" :append-to-body="true">
+    <el-dialog v-model="dialogOpen" :title="'案件详情 — ' + (currentCase?.case_no ?? '')" width="900px"
+      :append-to-body="true">
       <template #header>
         <span class="text-base font-semibold">案件详情 — {{ currentCase?.case_no }}</span>
       </template>
       <template #footer>
         <div class="flex justify-end gap-3">
-          <el-button :icon="Edit" @click="openEditDialog">修改</el-button>
+          <el-button :icon="Refresh" @click="openEditDialog">刷新推导</el-button>
           <el-button :icon="Delete" type="danger" @click="deleteCase">删除</el-button>
           <el-button @click="dialogOpen = false">关闭</el-button>
         </div>
@@ -480,17 +439,15 @@ onMounted(() => {
           </div>
         </div>
         <!-- #9 刑事门槛判定 -->
-        <div
-          class="mb-4 px-4 py-3 rounded-lg flex items-center gap-3 text-sm font-semibold"
-          :style="{
-            background: currentCase.amount >= 50000 ? '#FDECEA' : currentCase.amount >= 30000 ? '#FDF6EC' : '#F0FAF0',
-            border: `1px solid ${currentCase.amount >= 50000 ? '#F5C6C2' : currentCase.amount >= 30000 ? '#FAD7A0' : '#A8D8A8'}`
-          }"
-        >
+        <div class="mb-4 px-4 py-3 rounded-lg flex items-center gap-3 text-sm font-semibold" :style="{
+          background: currentCase.amount >= 50000 ? '#FDECEA' : currentCase.amount >= 30000 ? '#FDF6EC' : '#F0FAF0',
+          border: `1px solid ${currentCase.amount >= 50000 ? '#F5C6C2' : currentCase.amount >= 30000 ? '#FAD7A0' : '#A8D8A8'}`
+        }">
           <span class="text-lg">
             {{ currentCase.amount >= 50000 ? '🔴' : currentCase.amount >= 30000 ? '🟡' : '🟢' }}
           </span>
-          <span :style="{ color: currentCase.amount >= 50000 ? '#C0392B' : currentCase.amount >= 30000 ? '#E67E22' : '#27AE60' }">
+          <span
+            :style="{ color: currentCase.amount >= 50000 ? '#C0392B' : currentCase.amount >= 30000 ? '#E67E22' : '#27AE60' }">
             <template v-if="currentCase.amount >= 50000">
               已达刑事立案标准（非法经营额 &ge; 5万元），建议移送刑事立案线索
             </template>
@@ -501,26 +458,21 @@ onMounted(() => {
               暂未达刑事立案门槛，可应对行政处罚或继续收集证据
             </template>
           </span>
-          <span class="ml-auto text-xs font-normal text-gray-400">涉案金额 {{ currentCase.amount?.toLocaleString() }} 元</span>
+          <span class="ml-auto text-xs font-normal text-gray-400">涉案金额 {{ currentCase.amount?.toLocaleString() }}
+            元</span>
         </div>
 
-        <TabButton
-          v-model="detailTab"
-          :tabs="[
-            { key: 'chat', label: '聊天记录' },
-            { key: 'trade', label: '交易记录' },
-            { key: 'relation', label: '人物关系' },
-            { key: 'report', label: '导出报告' }
-          ]"
-        />
+        <TabButton v-model="detailTab" :tabs="[
+          { key: 'chat', label: '聊天记录' },
+          { key: 'trade', label: '交易记录' },
+          { key: 'relation', label: '人物关系' },
+          { key: 'report', label: '导出报告' }
+        ]" />
 
         <div v-if="detailTab === 'chat'">
           <div v-if="detailData?.communications && detailData.communications.length > 0">
-            <div
-              v-for="(comm, index) in detailData.communications"
-              :key="index"
-              class="rounded-lg p-4 text-sm bg-gray-50 border border-gray-200 font-mono leading-relaxed mb-2"
-            >
+            <div v-for="(comm, index) in detailData.communications" :key="index"
+              class="rounded-lg p-4 text-sm bg-gray-50 border border-gray-200 font-mono leading-relaxed mb-2">
               <div class="flex items-center gap-2 mb-2 text-xs text-gray-500">
                 <span class="font-bold text-[#1A3A5C]">{{ comm.initiator || '未知' }}</span>
                 <span>发送给</span>
@@ -561,16 +513,14 @@ onMounted(() => {
           </div>
 
           <div v-if="actorsLoading" class="py-12 text-center" v-loading="true"></div>
-          
+
           <div v-else-if="keyActors && keyActors.length > 0" class="grid grid-cols-2 gap-3">
-            <div 
-              v-for="(actor, idx) in keyActors" 
-              :key="idx"
-              class="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all shadow-sm group"
-            >
+            <div v-for="(actor, idx) in keyActors" :key="idx"
+              class="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all shadow-sm group">
               <div class="flex justify-between items-start mb-3">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                  <div
+                    class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
                     {{ actor.name?.charAt(0) }}
                   </div>
                   <span class="font-bold text-[#1A3A5C] text-base">
@@ -584,7 +534,8 @@ onMounted(() => {
               <div class="space-y-2 text-xs">
                 <p class="text-gray-600"><span class="text-gray-400">涉嫌罪名：</span>{{ actor.crime_type }}</p>
                 <div class="flex flex-wrap gap-1 mt-1">
-                  <span v-for="tag in actor.keyword_roles" :key="tag" class="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-100">
+                  <span v-for="tag in actor.keyword_roles" :key="tag"
+                    class="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-100">
                     # {{ tag }}
                   </span>
                 </div>
@@ -595,11 +546,14 @@ onMounted(() => {
           <div v-else class="py-12 bg-gray-50 rounded-lg border border-gray-200 text-center">
             <div class="mb-6 flex flex-col items-center">
               <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                <el-icon :size="32" class="text-blue-600"><Share /></el-icon>
+                <el-icon :size="32" class="text-blue-600">
+                  <Share />
+                </el-icon>
               </div>
               <p class="text-gray-600 font-medium">暂未识别到核心主体，点击下方按钮尝试全量深度分析</p>
             </div>
-            <el-button type="primary" size="large" @click="gotoRelations" class="!bg-[#1A3A5C] !border-[#1A3A5C] shadow-sm px-8">
+            <el-button type="primary" size="large" @click="gotoRelations"
+              class="!bg-[#1A3A5C] !border-[#1A3A5C] shadow-sm px-8">
               进入深度关系分析 →
             </el-button>
           </div>
@@ -608,13 +562,16 @@ onMounted(() => {
         <div v-if="detailTab === 'report'" class="py-12 bg-gray-50 rounded-lg border border-gray-200 text-center">
           <p class="mb-6 text-gray-600">第一步：点击下方按钮分析全案并生成报告文件</p>
           <div class="flex flex-col items-center gap-4">
-            <el-button type="primary" size="large" :icon="Plus" :loading="generatingReport" @click="generateReport" class="!bg-[#1A3A5C] !border-[#1A3A5C] shadow-sm w-64">
+            <el-button type="primary" size="large" :icon="Plus" :loading="generatingReport" @click="generateReport"
+              class="!bg-[#1A3A5C] !border-[#1A3A5C] shadow-sm w-64">
               {{ generatingReport ? '正在分析生成...' : '立即生成分析报告' }}
             </el-button>
-            
-            <div v-if="lastReportUrl" class="mt-4 p-4 bg-green-50 border border-green-100 rounded-lg w-80 animate-fade-in">
+
+            <div v-if="lastReportUrl"
+              class="mt-4 p-4 bg-green-50 border border-green-100 rounded-lg w-80 animate-fade-in">
               <p class="text-xs text-green-700 mb-3 font-semibold">✓ 报告已就绪：{{ lastReportName }}</p>
-              <el-button type="success" size="default" :icon="Download" @click="downloadLastReport" class="!bg-[#27AE60] !border-[#27AE60] w-full">
+              <el-button type="success" size="default" :icon="Download" @click="downloadLastReport"
+                class="!bg-[#27AE60] !border-[#27AE60] w-full">
                 点击下载报告文件
               </el-button>
             </div>
@@ -632,15 +589,7 @@ onMounted(() => {
         <el-form-item label="案件名称" prop="case_no">
           <el-input v-model="addCaseForm.case_no" placeholder="如：CASE001" />
         </el-form-item>
-        <el-form-item label="嫌疑人姓名" prop="suspect_name">
-          <el-input v-model="addCaseForm.suspect_name" placeholder="请输入嫌疑人姓名" />
-        </el-form-item>
-        <el-form-item label="涉案品牌" prop="brand">
-          <el-input v-model="addCaseForm.brand" placeholder="请输入涉案品牌" />
-        </el-form-item>
-        <el-form-item label="涉案金额" prop="amount">
-          <el-input v-model.number="addCaseForm.amount" placeholder="请输入涉案金额" type="number" />
-        </el-form-item>
+        <p class="mt-2 text-xs text-gray-400 leading-5">后端已切换为自动推导模式，创建案件时只需填写案件名称。</p>
       </el-form>
       <template #footer>
         <div class="flex justify-end gap-3">
@@ -651,22 +600,20 @@ onMounted(() => {
     </el-dialog>
 
     <!-- 修改案件弹窗 -->
-    <el-dialog v-model="editDialogOpen" title="修改案件信息" width="500px" :append-to-body="true">
-      <el-form :model="editCaseForm" :rules="editCaseRules" label-width="100px">
-        <el-form-item label="嫌疑人姓名" prop="suspect_name">
-          <el-input v-model="editCaseForm.suspect_name" placeholder="请输入嫌疑人姓名" />
-        </el-form-item>
-        <el-form-item label="涉案品牌" prop="brand">
-          <el-input v-model="editCaseForm.brand" placeholder="请输入涉案品牌" />
-        </el-form-item>
-        <el-form-item label="涉案金额" prop="amount">
-          <el-input v-model.number="editCaseForm.amount" placeholder="请输入涉案金额" type="number" />
-        </el-form-item>
-      </el-form>
+    <el-dialog v-model="editDialogOpen" title="自动推导结果" width="520px" :append-to-body="true">
+      <div v-if="currentCase" class="space-y-4">
+        <div class="rounded-lg bg-gray-50 border border-gray-200 p-4 text-sm text-gray-700">
+          <p class="font-semibold text-[#1A3A5C] mb-2">当前案件：{{ currentCase.case_no }}</p>
+          <p>嫌疑人：{{ currentCase.suspect_name }}</p>
+          <p>品牌：{{ currentCase.brand }}</p>
+          <p>金额：{{ currentCase.amount }}</p>
+        </div>
+        <p class="text-xs text-gray-400 leading-5">后端已不再接受手工修改这些字段，如需刷新结果，请点击“刷新推导”。</p>
+      </div>
       <template #footer>
         <div class="flex justify-end gap-3">
           <el-button @click="editDialogOpen = false">取消</el-button>
-          <el-button type="primary" @click="submitEditCase">提交</el-button>
+          <el-button type="primary" :loading="inferenceLoading" @click="submitEditCase">刷新推导</el-button>
         </div>
       </template>
     </el-dialog>
