@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from "vue";
 import { useRoute, RouterView } from "vue-router";
-import { ElButton, ElTable, ElTableColumn, ElDialog, ElInput, ElSelect, ElOption, ElMessage, ElCheckbox, ElLoading, ElIcon } from "element-plus";
-import { Document, Download, Edit, Search } from "@element-plus/icons-vue";
+import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessage, ElCheckbox, ElLoading, ElIcon } from "element-plus";
+import { Document, Download, Search } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
-import { maskPhone, maskName } from "@/utils/masking";
+import { maskName } from "@/utils/masking";
 
 const route = useRoute();
 const ledgerTab = ref<"fund" | "person" | "report" | "evidence">("person");
@@ -27,7 +27,6 @@ watch(
 );
 
 // 加载状态
-const loading = ref(false);
 const fundLoading = ref(false);
 const personLoading = ref(false);
 const isMasked = ref(true);
@@ -317,13 +316,13 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <el-table-column prop="payer" label="付款方" min-width="120">
             <template #default="scope">
               <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payer) : scope.row.payer
-                }}</span>
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="payee" label="收款方" min-width="120">
             <template #default="scope">
               <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payee) : scope.row.payee
-                }}</span>
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column label="金额" min-width="140" align="right">
@@ -402,7 +401,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <el-table-column prop="name" label="姓名" min-width="110">
             <template #default="scope">
               <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.name) : scope.row.name
-                }}</span>
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="role" label="角色" min-width="120">
@@ -450,7 +449,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
                 borderColor: row.illegal_business_amount >= 50000 ? '#FECACA' : (row.illegal_business_amount >= 20000 ? '#FDE68A' : '#BBF7D0')
               }">
                 {{ row.illegal_business_amount >= 50000 ? '刑事立案标准' : (row.illegal_business_amount >= 20000 ? '重点关注' :
-                '行政违法级别') }}
+                  '行政违法级别') }}
               </span>
             </template>
           </el-table-column>

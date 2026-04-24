@@ -26,10 +26,11 @@ export type InferCaseFieldsResponse = ApiResult<CaseSummary>;
 export interface CasesRepository {
   listCases(req: ListCasesRequest): Promise<ListCasesResponse>;
   getCaseDetail(caseId: string): Promise<GetCaseDetailResponse>;
+  getSuspiciousClues(caseId: string): Promise<any>;
   createCase(req: CreateCaseRequest): Promise<CreateCaseResponse>;
   updateCase(caseId: string, req: UpdateCaseRequest): Promise<UpdateCaseResponse>;
   inferFields(caseId: string): Promise<InferCaseFieldsResponse>;
-  deleteCase(caseId: string): Promise<ApiResult<null>>;
+  deleteCase(caseId: string): Promise<any>;
   getCaseSuspicious(caseId: string): Promise<any>;
   getClueDetail(clueId: string): Promise<any>;
 }

@@ -100,7 +100,7 @@ export const router = createRouter({
 });
 
 // 全局路由守卫：实现坚固的鉴权逻辑
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const isLogged = !!localStorage.getItem('basic_auth_username');
   
   // 1. 如果是公共页面（如登录页），且已登录，直接跳转主页

@@ -118,11 +118,11 @@ async function fetchDashboardData() {
     // 1. Fetch cases
     const casesRes = await repositories.cases.listCases({ limit: 500 });
     const cases = Array.isArray(casesRes) ? casesRes : ((casesRes as any)?.list || (casesRes as any)?.data || []);
-    
+
     // 2. Fetch persons
     const personsRes = await get<any>('/ledger/persons');
     const persons = Array.isArray(personsRes) ? personsRes : ((personsRes as any)?.list || (personsRes as any)?.data || []);
-    
+
     // 3. Fetch transactions
     const transRes = await get<any>('/ledger/transactions');
     const transactions = Array.isArray(transRes) ? transRes : ((transRes as any)?.list || (transRes as any)?.data || []);
@@ -170,7 +170,7 @@ async function fetchDashboardData() {
 
     if (liveCluesData.length > 0) {
       // Sort by severity: 刑事犯罪 first
-      liveCluesData.sort((a, b) => (a.severity === '刑事犯罪' ? -1 : 1));
+      liveCluesData.sort((a, _b) => (a.severity === '刑事犯罪' ? -1 : 1));
       liveClues.value = liveCluesData.slice(0, 10);
     }
 
@@ -268,10 +268,7 @@ onMounted(() => {
               {{ card.value }}<span class="text-[13px] font-normal ml-1" style="color: #888">{{ card.unit }}</span>
             </p>
           </div>
-          <div
-            class="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
-            :style="{ background: card.bg }"
-          >
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg" :style="{ background: card.bg }">
             {{ card.icon }}
           </div>
         </div>
@@ -299,12 +296,8 @@ onMounted(() => {
     <div class="app-card p-6">
       <div class="card-title !mb-0">实时侵权线索动态</div>
       <div class="space-y-3 overflow-y-auto" style="max-height: 320px">
-        <div
-          v-for="item in liveClues"
-          :key="item.id"
-          class="flex items-center justify-between p-3 rounded-lg"
-          style="background: #F5F8FA; border: 1px solid #E8EEF4"
-        >
+        <div v-for="item in liveClues" :key="item.id" class="flex items-center justify-between p-3 rounded-lg"
+          style="background: #F5F8FA; border: 1px solid #E8EEF4">
           <div class="flex items-center gap-3">
             <span class="text-xs font-mono" style="color: #aaa">{{ item.time }}</span>
             <span class="text-sm font-semibold" style="color: #1A3A5C">{{ item.case }}</span>

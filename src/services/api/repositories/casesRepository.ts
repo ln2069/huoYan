@@ -1,5 +1,4 @@
 import { get, post, put, del } from "../client";
-import type { ApiResult } from "@/entities/common";
 import type { CasesRepository, ListCasesRequest, GetCaseDetailResponse, ListCasesResponse, CreateCaseRequest, CreateCaseResponse, UpdateCaseRequest, UpdateCaseResponse, InferCaseFieldsResponse } from "../types/cases";
 
 export function createApiCasesRepository(): CasesRepository {
@@ -22,7 +21,7 @@ export function createApiCasesRepository(): CasesRepository {
     async inferFields(caseId: string): Promise<InferCaseFieldsResponse> {
       return post<InferCaseFieldsResponse>(`/cases/${caseId}/infer-fields`);
     },
-    async deleteCase(caseId: string): Promise<ApiResult<null>> {
+    async deleteCase(caseId: string) {
       return del<null>(`/cases/${caseId}`);
     },
     async getCaseSuspicious(caseId: string) {

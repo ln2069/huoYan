@@ -2,7 +2,7 @@
 import { ref, shallowRef, computed, onMounted, nextTick, onBeforeUnmount, watch } from "vue";
 import * as echarts from "echarts";
 import type { ECharts } from "echarts";
-import { ElButton, ElInput, ElSelect, ElMessage, ElLoading } from "element-plus";
+import { ElButton, ElInput, ElSelect, ElMessage } from "element-plus";
 import { Search } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
 import type { UpstreamGraph, CrossCaseGraph } from "@/entities/graph";
@@ -44,13 +44,13 @@ const currentUpstreamCase = computed(() => cases.value.find((c) => c.id === sele
 const upstreamStats = computed(() => {
   const d = upstreamData.value;
   if (!d) return { nodes: 0, links: 0, suppliers: 0, buyers: 0 };
-  
+
   // 统计图中实际存在的唯一节点
   const uniqueNodes = new Set();
-  if (d.center) uniqueNodes.add(d.center.id || d.center.name);
-  d.suppliers.forEach(n => uniqueNodes.add(n.id || n.name));
-  d.buyers.forEach(n => uniqueNodes.add(n.id || n.name));
-  d.middle.forEach(n => uniqueNodes.add(n.id || n.name));
+  if (d.center) uniqueNodes.add((d.center as any).id || d.center.name);
+  d.suppliers.forEach((n: any) => uniqueNodes.add(n.id || n.name));
+  d.buyers.forEach((n: any) => uniqueNodes.add(n.id || n.name));
+  d.middle.forEach((n: any) => uniqueNodes.add(n.id || n.name));
 
   return {
     nodes: uniqueNodes.size,
@@ -73,17 +73,17 @@ async function loadCases() {
       offset: 0,
     });
     const list = Array.isArray(response) ? response : ((response as any)?.list || (response as any)?.data?.list || []);
-    
+
     cases.value = list.map((c: any) => ({
       id: isNaN(Number(c.id)) ? c.id : Number(c.id),
       case_no: c.case_no,
       suspect: c.suspect_name || '未知嫌疑人'
     }));
-    
+
     const queryCaseId = route.query.caseId as string;
     if (queryCaseId) {
       const numId = Number(queryCaseId);
-      selectedCaseId.value = isNaN(numId) ? queryCaseId : numId;
+      selectedCaseId.value = String(isNaN(numId) ? queryCaseId : numId);
     } else if (cases.value.length > 0 && !selectedCaseId.value) {
       selectedCaseId.value = cases.value[0].id;
     }
@@ -102,8 +102,10 @@ async function loadCrossCaseGraph() {
   try {
     const response = await repositories.relations.getCrossCaseGraph();
     // 后端返回的是 List[Dict] 结构，每个 dict 包含 person, case_ids, case_details
-    const connections = Array.isArray(response) ? response : (response.data || []);
-    
+    const connections: any[] = Array.isArray(response)
+      ? response
+      : (((response as any).code === 0 ? (response as any).data : response) as any[]) || [];
+
     if (connections.length === 0) {
       crossGraph.value = { nodes: [], links: [] };
       graphStats.value = { nodes: 0, links: 0, keyNodes: 0, linkedCases: 0 };
@@ -139,7 +141,7 @@ async function loadCrossCaseGraph() {
         caseIdsSet.add(caseId);
         const caseDetail = conn.case_details?.[idx];
         const caseNodeId = `case_${caseId}`;
-        
+
         if (!nodesMap.has(caseNodeId)) {
           nodesMap.set(caseNodeId, {
             id: caseNodeId,
@@ -152,7 +154,7 @@ async function loadCrossCaseGraph() {
             info: caseDetail?.brand ? `涉及品牌: ${caseDetail.brand}` : ''
           });
         }
-        
+
         const cNode = nodesMap.get(caseNodeId);
         if (cNode) cNode.count++;
 
@@ -204,8 +206,8 @@ watch(selectedNode, async (node) => {
       // 案件节点：加载上下游关系
       const caseId = node.id.replace('case_', '');
       try {
-        const response = await repositories.relations.getUpstreamGraph({ caseId });
-        selectedCaseChain.value = response.data || response;
+        const response = await repositories.relations.getUpstreamGraph({ caseId: String(caseId) });
+        selectedCaseChain.value = (response as any).data || response;
       } catch (error) {
         console.error("加载案件上下游关系失败:", error);
         selectedCaseChain.value = null;
@@ -230,16 +232,16 @@ watch(selectedNode, async (node) => {
 
 const selectedNodeDetail = computed(() => {
   if (!selectedNode.value) return null;
-  
+
   // 1. 尝试从单案全链的详细列表中查找
   const evidenceSource = [
-    ...detailedUpstream.value, 
-    ...detailedDownstream.value, 
+    ...detailedUpstream.value,
+    ...detailedDownstream.value,
     ...detailedCoreSuspects.value
   ].find(p => p.name === selectedNode.value.name || p.name === selectedNode.value.fullName);
-    
+
   const fromLedger = personLedger.value.find(p => p.name === selectedNode.value.name);
-  
+
   // 2. 聚合证据 (优先取详细列表，次之取节点自带的聚合证据)
   const finalEvidence = evidenceSource?.evidence || selectedNode.value.evidence || null;
 
@@ -272,12 +274,12 @@ async function loadUpstreamGraph(caseId: string | number) {
   try {
     // 使用 Promise.allSettled 或单独处理以防部分接口未实现导致全屏报错
     const [rawRes, upListRes, downListRes, coreListRes] = await Promise.allSettled([
-      repositories.relations.getUpstreamGraph({ caseId }),
+      repositories.relations.getUpstreamGraph({ caseId: String(caseId) }),
       repositories.relations.getUpstreamList(caseId),
       repositories.relations.getDownstreamList(caseId),
       repositories.relations.getCoreSuspectsList(caseId)
     ]);
-    
+
     const raw = rawRes.status === 'fulfilled' ? rawRes.value : null;
     const upList = upListRes.status === 'fulfilled' ? upListRes.value : [];
     const downList = downListRes.status === 'fulfilled' ? downListRes.value : [];
@@ -286,48 +288,48 @@ async function loadUpstreamGraph(caseId: string | number) {
     if (!raw) {
       throw new Error("关键图谱数据获取失败");
     }
-    
-    detailedUpstream.value = upList.data || upList || [];
-    detailedDownstream.value = downList.data || downList || [];
-    detailedCoreSuspects.value = coreList.data || coreList || [];
-    
-    console.log("Relations API Response:", raw); 
-    
+
+    detailedUpstream.value = (upList as any).data || upList || [];
+    detailedDownstream.value = (downList as any).data || downList || [];
+    detailedCoreSuspects.value = (coreList as any).data || coreList || [];
+
+    console.log("Relations API Response:", raw);
+
     // 兼容 {code, data} 和 直接返回数据 两种模式
-    const resData = (raw.code === 0 && raw.data) ? raw.data : raw;
-    
+    const resData = ((raw as any).code === 0 && (raw as any).data) ? (raw as any).data : (raw as any);
+
     // 更新统计摘要
     totalAmount.value = resData.statistics?.total_transaction_amount || resData.amount_summary?.total_transaction_amount || 0;
     illegalIncome.value = resData.amount_summary?.illegal_income || 0;
     totalTransactions.value = resData.statistics?.total_transaction_count || 0;
     hiddenSources.value = resData.statistics?.hidden_source_count || 0;
-    
+
     upstreamCount.value = resData.upstream_count || 0;
     downstreamCount.value = resData.downstream_count || 0;
     coreCount.value = resData.core_count || 0;
-    
+
     // 如果后端直接返回了 relation_graph 拓扑结构 (包含 nodes 和 edges)
     if (resData.relation_graph) {
       const rawNodes = resData.relation_graph.nodes || [];
       const rawLinks = resData.relation_graph.edges || resData.relation_graph.links || [];
-      
+
       // 1. 节点清洗与双重映射映射 (支持 ID 和 Name 两种索引)
       const mergedNodesMap = new Map();
       const lookup = new Map(); // 原始 ID 或 原始名称 -> 干净名称的映射
-      
+
       rawNodes.forEach((n: any) => {
         const rawId = n.id?.toString() || "";
         const rawName = n.name || n.label || "";
         const full = rawName || rawId;
-        
+
         // 提取干净的显示名称
         const match = full.match(/^(.+?)\s*\(.*\)$/);
         const cleanName = match ? match[1] : full;
-        
+
         // 建立双重索引映射，确保连线能找回来
         if (rawId) lookup.set(rawId, cleanName);
         if (rawName) lookup.set(rawName, cleanName);
-        
+
         if (!mergedNodesMap.has(cleanName)) {
           mergedNodesMap.set(cleanName, {
             ...n,
@@ -351,7 +353,7 @@ async function loadUpstreamGraph(caseId: string | number) {
           const existing = mergedNodesMap.get(cleanName);
           if (n.role && !existing.role.includes(n.role)) existing.role += `, ${n.role}`;
           if (n.info) existing.info = (existing.info || '') + ' | ' + n.info;
-          
+
           // 关键修复：合并证据链数据
           if (n.evidence) {
             if (!existing.evidence) existing.evidence = { transactions: [], logistics: [], communications: [] };
@@ -366,21 +368,21 @@ async function loadUpstreamGraph(caseId: string | number) {
 
       // 2. 连线重定向与合并 (支持复杂的 ECharts 连线格式)
       const mergedLinksMap = new Map();
-      
+
       rawLinks.forEach((e: any) => {
         const typeMap: Record<string, string> = {
-          'money': '资金往来', 'logistics': '物流发货', 'chat': '通讯联系', 
+          'money': '资金往来', 'logistics': '物流发货', 'chat': '通讯联系',
           'transfer': '资金转账', 'supply': '供货关系', 'sale': '销售关系'
         };
         const chineseLabel = typeMap[e.type] || e.label?.formatter || e.type || "关联";
-        
+
         // 智能解析 source/target (兼容对象格式或字符串 ID 格式)
         const sRaw = (e.source?.id || e.source?.name || e.source).toString();
         const tRaw = (e.target?.id || e.target?.name || e.target).toString();
-        
+
         const src = lookup.get(sRaw) || sRaw;
         const tgt = lookup.get(tRaw) || tRaw;
-        
+
         // 只有当源和目标都存在时才建立连线
         if (src && tgt && src !== tgt) {
           const linkKey = `${src}->${tgt}`;
@@ -408,7 +410,7 @@ async function loadUpstreamGraph(caseId: string | number) {
       }));
 
       const centerNode = nodes.find((n: any) => n.is_core || (n.role || '').includes('核心')) || nodes[0];
-      
+
       if (!centerNode) {
         upstreamData.value = null;
         return;
@@ -462,9 +464,8 @@ async function loadUpstreamGraph(caseId: string | number) {
         itemStyle: { color: "#C0392B" }, symbolSize: 70
       }));
 
-      const currentCase = cases.value.find(c => c.id === caseId);
       const center = coreSuspects.length > 0 ? coreSuspects[0] : null;
-      
+
       if (!center) {
         upstreamData.value = null;
         return;
@@ -485,9 +486,9 @@ async function loadUpstreamGraph(caseId: string | number) {
       upstreamData.value = {
         caseId: caseId.toString(),
         center: { ...center, category: '核心嫌疑人' },
-        suppliers: suppliers.map(s => ({ ...s, category: '上游供应商' })),
-        buyers: buyers.map(b => ({ ...b, category: '下游买家' })),
-        middle: middle.map(m => ({ ...m, category: '其他节点' })),
+        suppliers: suppliers.map((s: any) => ({ ...s, category: '上游供应商' })),
+        buyers: buyers.map((b: any) => ({ ...b, category: '下游买家' })),
+        middle: middle.map((m: any) => ({ ...m, category: '其他节点' })),
         links: links
       };
     }
@@ -549,45 +550,45 @@ function buildGraphOption(nodes: any[], links: any[]) {
         edgeSymbol: ['none', 'arrow'],
         edgeSymbolSize: [5, 10],
         categories: [
-          { 
-            name: '核心嫌疑人', 
+          {
+            name: '核心嫌疑人',
             symbolSize: 90,
-            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 2, shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.3)', shadowOffsetY: 4 } 
+            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 2, shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.3)', shadowOffsetY: 4 }
           },
-          { 
-            name: '上游供应商', 
+          {
+            name: '上游供应商',
             symbolSize: 80,
-            itemStyle: { color: '#1A3A5C', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 3 } 
+            itemStyle: { color: '#1A3A5C', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 3 }
           },
-          { 
-            name: '下游买家', 
+          {
+            name: '下游买家',
             symbolSize: 80,
-            itemStyle: { color: '#27AE60', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 3 } 
+            itemStyle: { color: '#27AE60', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 3 }
           },
-          { 
-            name: '其他节点', 
+          {
+            name: '其他节点',
             symbolSize: 70,
-            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 2 } 
+            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 1.5, shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.2)', shadowOffsetY: 2 }
           },
-          { 
-            name: '关联案件', 
+          {
+            name: '关联案件',
             symbolSize: 85,
-            itemStyle: { color: '#1A3A5C', borderColor: '#FFFFFF', borderWidth: 2 } 
+            itemStyle: { color: '#1A3A5C', borderColor: '#FFFFFF', borderWidth: 2 }
           },
-          { 
-            name: '人员', 
+          {
+            name: '人员',
             symbolSize: 75,
-            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 1.5 } 
+            itemStyle: { color: '#C0392B', borderColor: '#FFFFFF', borderWidth: 1.5 }
           }
         ],
         label: {
           show: true,
           position: "inside",
           formatter: (p: any) => {
-             const full = p.data?.name || "";
-             // 仅提取主姓名，剔除括号内的账号信息
-             const match = full.match(/^(.+?)\s*\(.*\)$/);
-             return match ? match[1] : full;
+            const full = p.data?.name || "";
+            // 仅提取主姓名，剔除括号内的账号信息
+            const match = full.match(/^(.+?)\s*\(.*\)$/);
+            return match ? match[1] : full;
           },
           textStyle: {
             fontSize: 14,
@@ -632,8 +633,8 @@ function buildGraphOption(nodes: any[], links: any[]) {
             ...l,
             name: relationName,
             lineStyle: {
-               ...l.lineStyle,
-               type: relationName.includes('物流') ? 'dashed' : 'solid'
+              ...l.lineStyle,
+              type: relationName.includes('物流') ? 'dashed' : 'solid'
             }
           };
         }),
@@ -649,9 +650,9 @@ function initGraph(
   chartType: "cross" | "upstream"
 ) {
   if (!chartRef) return;
-  
+
   let instance = chartType === "cross" ? crossChart.value : upstreamChart.value;
-  
+
   if (!instance) {
     instance = echarts.init(chartRef);
     if (chartType === "cross") crossChart.value = instance;
@@ -688,7 +689,7 @@ function initUpstreamChart() {
 
   // 核心：通过 Map 确保节点 ID/Name 绝对唯一，解决 ECharts "duplicate name or id" 报错
   const nodeMap = new Map();
-  
+
   // 按照优先级加入：中心节点 > 供应商 > 买家 > 其他
   const addNode = (n: any) => {
     if (!n) return;
@@ -741,7 +742,7 @@ watch(
 onMounted(async () => {
   await loadCases();
   loadPersonLedger();
-  
+
   const handleResize = () => {
     crossChart.value?.resize();
     upstreamChart.value?.resize();
@@ -754,7 +755,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   resizeHandlers.forEach(handler => window.removeEventListener("resize", handler));
   resizeHandlers.clear();
-  
+
   if (crossChart.value && !crossChart.value.isDisposed()) crossChart.value.dispose();
   if (upstreamChart.value && !upstreamChart.value.isDisposed()) upstreamChart.value.dispose();
 });
@@ -815,12 +816,13 @@ function exportPng(which: "cross" | "upstream") {
           </div>
         </div>
         <div class="flex gap-2">
-           <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD" @click="reloadCurrentGraph">
-             🔄 刷新布局
-           </el-button>
-           <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C" @click="exportPng(graphTab === 'crosscase' ? 'cross' : 'upstream')">
-             导出可视化图
-           </el-button>
+          <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD" @click="reloadCurrentGraph">
+            🔄 刷新布局
+          </el-button>
+          <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C"
+            @click="exportPng(graphTab === 'crosscase' ? 'cross' : 'upstream')">
+            导出可视化图
+          </el-button>
         </div>
       </div>
     </div>
@@ -833,8 +835,10 @@ function exportPng(which: "cross" | "upstream") {
             <div class="flex justify-between items-center mb-4">
               <div class="flex gap-2">
                 <el-input v-model="nodeSearch" placeholder="搜索节点..." size="small" style="width: 150px" />
-                <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD" @click="highlightSearch">节点检索</el-button>
-                <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C" @click="exportPng('upstream')">导出 PNG</el-button>
+                <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD"
+                  @click="highlightSearch">节点检索</el-button>
+                <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C"
+                  @click="exportPng('upstream')">导出 PNG</el-button>
               </div>
             </div>
             <div class="text-xs mb-2 mt-2" style="color: #aaa">💡 拖动节点定位 | 滚轮缩放 | 鼠标悬停查看详情</div>
@@ -857,7 +861,8 @@ function exportPng(which: "cross" | "upstream") {
                     <p class="text-2xl font-extrabold" style="color: #C0392C">
                       {{ selectedNodeDetail.isCase ? selectedNodeDetail.name : maskName(selectedNodeDetail.name) }}
                     </p>
-                    <p class="text-sm mt-1" style="color: #888">{{ selectedNodeDetail.role || (selectedNodeDetail.isCase ? '涉案案件' : '关联人员') }}</p>
+                    <p class="text-sm mt-1" style="color: #888">{{ selectedNodeDetail.role || (selectedNodeDetail.isCase
+                      ? '涉案案件' : '关联人员') }}</p>
                   </div>
                   <div class="text-right">
                     <p class="text-3xl font-black" style="color: #C0392B">{{ selectedNodeDetail.count }}</p>
@@ -876,34 +881,40 @@ function exportPng(which: "cross" | "upstream") {
                   <span class="text-xs" style="color: #555">{{ selectedNodeDetail.crimeType }}</span>
                 </div>
                 <div v-if="selectedNodeDetail.keywordRoles?.length" class="mt-2 flex gap-1 flex-wrap">
-                  <span v-for="r in selectedNodeDetail.keywordRoles" :key="r" class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[10px]">
+                  <span v-for="r in selectedNodeDetail.keywordRoles" :key="r"
+                    class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[10px]">
                     # {{ r }}
                   </span>
                 </div>
-                
+
                 <!-- 资金往来 -->
-                <div v-if="selectedNodeDetail.moneyIn !== undefined || selectedNodeDetail.moneyOut !== undefined" class="mt-2 p-2 rounded bg-gray-50 border border-gray-100">
-                   <div v-if="selectedNodeDetail.moneyIn !== undefined" class="flex justify-between text-xs mb-1">
-                      <span style="color: #888">资金转入</span>
-                      <span class="font-mono font-bold" style="color: #27AE60">+{{ selectedNodeDetail.moneyIn.toLocaleString() }}</span>
-                   </div>
-                   <div v-if="selectedNodeDetail.moneyOut !== undefined" class="flex justify-between text-xs">
-                      <span style="color: #888">资金转出</span>
-                      <span class="font-mono font-bold" style="color: #C0392B">-{{ selectedNodeDetail.moneyOut.toLocaleString() }}</span>
-                   </div>
+                <div v-if="selectedNodeDetail.moneyIn !== undefined || selectedNodeDetail.moneyOut !== undefined"
+                  class="mt-2 p-2 rounded bg-gray-50 border border-gray-100">
+                  <div v-if="selectedNodeDetail.moneyIn !== undefined" class="flex justify-between text-xs mb-1">
+                    <span style="color: #888">资金转入</span>
+                    <span class="font-mono font-bold" style="color: #27AE60">+{{
+                      selectedNodeDetail.moneyIn.toLocaleString() }}</span>
+                  </div>
+                  <div v-if="selectedNodeDetail.moneyOut !== undefined" class="flex justify-between text-xs">
+                    <span style="color: #888">资金转出</span>
+                    <span class="font-mono font-bold" style="color: #C0392B">-{{
+                      selectedNodeDetail.moneyOut.toLocaleString() }}</span>
+                  </div>
                 </div>
 
                 <div v-if="selectedNodeDetail.commFrequency" class="info-item">
                   <span class="text-xs font-semibold" style="color: #888">通讯频率</span>
-                  <span class="text-sm font-bold" style="color: #1A3A5C">{{ selectedNodeDetail.commFrequency }} 次联络</span>
+                  <span class="text-sm font-bold" style="color: #1A3A5C">{{ selectedNodeDetail.commFrequency }}
+                    次联络</span>
                 </div>
-                
+
                 <div v-if="selectedNodeDetail.phone" class="info-item">
                   <span class="text-xs font-semibold" style="color: #888">联系电话</span>
                   <span class="text-sm font-mono" style="color: #555">{{ maskPhone(selectedNodeDetail.phone) }}</span>
                 </div>
                 <!-- 累犯情报 -->
-                <div v-if="selectedNodeDetail.isRecidivist" class="info-item" style="background: #FFF5F5; border-radius: 4px; padding: 4px 8px; margin-top: 8px">
+                <div v-if="selectedNodeDetail.isRecidivist" class="info-item"
+                  style="background: #FFF5F5; border-radius: 4px; padding: 4px 8px; margin-top: 8px">
                   <span class="text-xs font-bold" style="color: #C0392B">⚠ 累犯风险</span>
                   <span class="text-xs font-bold" style="color: #C0392B">该人员有同类违法前科</span>
                 </div>
@@ -912,27 +923,28 @@ function exportPng(which: "cross" | "upstream") {
               <!-- 证据链展示 (当前案情重心) -->
               <div v-if="selectedNodeDetail.evidence" class="mt-4">
                 <p class="text-xs font-bold mb-2" style="color: #1A3A5C">
-                  ⛓️ 关联证据 (共 {{ (selectedNodeDetail.evidence.transactions?.length || 0) + (selectedNodeDetail.evidence.logistics?.length || 0) + (selectedNodeDetail.evidence.communications?.length || 0) }} 条)
+                  ⛓️ 关联证据 (共 {{ (selectedNodeDetail.evidence.transactions?.length || 0) +
+                    (selectedNodeDetail.evidence.logistics?.length || 0) +
+                    (selectedNodeDetail.evidence.communications?.length || 0) }} 条)
                 </p>
                 <div class="space-y-2">
                   <!-- 通讯证据 -->
                   <div v-if="selectedNodeDetail.evidence.communications?.length" class="space-y-2">
                     <p class="text-[11px] font-bold text-purple-800">💬 通讯记录 (展示前3条)</p>
-                    <div v-for="(c, idx) in selectedNodeDetail.evidence.communications.slice(0, 3)" :key="idx" 
+                    <div v-for="(c, idx) in selectedNodeDetail.evidence.communications.slice(0, 3)" :key="idx"
                       class="p-2 rounded border border-purple-100" style="background: #F9F0FF">
                       <div class="flex justify-between items-start mb-1">
-                        <span v-if="c.severity_level" 
-                          class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
-                          :style="{
-                            background: c.severity_level === '刑事犯罪' ? '#FEF2F2' : '#F0FDF4',
-                            color: c.severity_level === '刑事犯罪' ? '#DC2626' : '#16A34A'
-                          }">
+                        <span v-if="c.severity_level" class="px-1.5 py-0.5 rounded-full text-[9px] font-bold" :style="{
+                          background: c.severity_level === '刑事犯罪' ? '#FEF2F2' : '#F0FDF4',
+                          color: c.severity_level === '刑事犯罪' ? '#DC2626' : '#16A34A'
+                        }">
                           {{ c.severity_level }}
                         </span>
                       </div>
                       <p class="text-[10px] text-purple-700">
-                         <span class="font-bold">[{{ c.type }}]</span> {{ c.content }} 
-                         <span v-if="c.hit_keywords?.length" class="px-1 bg-red-100 text-red-500 rounded"> {{ c.hit_keywords.join(',') }}</span>
+                        <span class="font-bold">[{{ c.type }}]</span> {{ c.content }}
+                        <span v-if="c.hit_keywords?.length" class="px-1 bg-red-100 text-red-500 rounded"> {{
+                          c.hit_keywords.join(',') }}</span>
                       </p>
                       <p class="text-[9px] text-purple-400 mt-1 font-mono">{{ c.time }}</p>
                     </div>
@@ -940,11 +952,11 @@ function exportPng(which: "cross" | "upstream") {
                   <!-- 交易证据 -->
                   <div v-if="selectedNodeDetail.evidence.transactions?.length" class="space-y-2">
                     <p class="text-[11px] font-bold text-blue-800">💰 交易记录 (展示前3条)</p>
-                    <div v-for="(t, idx) in selectedNodeDetail.evidence.transactions.slice(0, 3)" :key="idx" 
+                    <div v-for="(t, idx) in selectedNodeDetail.evidence.transactions.slice(0, 3)" :key="idx"
                       class="p-2 rounded border border-blue-100" style="background: #F0F7FF">
                       <div class="text-[10px] text-blue-700 flex justify-between">
-                         <span>{{ t.type }}: {{ parseFloat(t.amount || 0).toLocaleString() }}元</span>
-                         <span class="font-mono">{{ t.time }}</span>
+                        <span>{{ t.type }}: {{ parseFloat(t.amount || 0).toLocaleString() }}元</span>
+                        <span class="font-mono">{{ t.time }}</span>
                       </div>
                     </div>
                   </div>
@@ -952,10 +964,13 @@ function exportPng(which: "cross" | "upstream") {
               </div>
 
               <!-- 往期案件详情 -->
-              <div v-if="selectedNodeDetail.relatedCasesDetail?.length" class="mt-5 pt-4 border-t border-dashed border-gray-200">
-                <p class="text-xs font-bold mb-2" style="color: #888">📂 往期案件档案 (共 {{ selectedNodeDetail.relatedCasesDetail.length }} 条)</p>
+              <div v-if="selectedNodeDetail.relatedCasesDetail?.length"
+                class="mt-5 pt-4 border-t border-dashed border-gray-200">
+                <p class="text-xs font-bold mb-2" style="color: #888">📂 往期案件档案 (共 {{
+                  selectedNodeDetail.relatedCasesDetail.length }} 条)</p>
                 <div class="space-y-1">
-                  <div v-for="(rc, idx) in selectedNodeDetail.relatedCasesDetail.slice(0, 3)" :key="idx" class="p-2 rounded bg-gray-50 border border-gray-100 text-[10px]">
+                  <div v-for="(rc, idx) in selectedNodeDetail.relatedCasesDetail.slice(0, 3)" :key="idx"
+                    class="p-2 rounded bg-gray-50 border border-gray-100 text-[10px]">
                     <div class="flex justify-between font-bold text-gray-500">
                       <span>案件名称: {{ rc.case_no || rc.case_id || "未知" }}</span>
                       <span>{{ parseFloat(rc.amount || 0).toLocaleString() }}元</span>
@@ -970,12 +985,9 @@ function exportPng(which: "cross" | "upstream") {
 
             <!-- 产业链统计 -->
             <div v-else>
-              <div
-                v-if="currentUpstreamCase && upstreamData"
+              <div v-if="currentUpstreamCase && upstreamData"
                 class="p-4 rounded-lg mb-4 cursor-pointer transition-all hover:shadow-lg active:scale-[0.98]"
-                style="background: #FDECEA; border: 2px solid #F5C6C2"
-                @click="selectedNode = upstreamData.center"
-              >
+                style="background: #FDECEA; border: 2px solid #F5C6C2" @click="selectedNode = upstreamData.center">
                 <div class="flex justify-between items-center">
                   <div>
                     <p class="text-2xl font-extrabold" style="color: #C0392C">{{ currentUpstreamCase.suspect }}</p>
@@ -1008,13 +1020,9 @@ function exportPng(which: "cross" | "upstream") {
                 <div>
                   <p class="text-xs font-bold mb-2" style="color: #888">⬆️ 上游供货商</p>
                   <div class="space-y-2">
-                    <div
-                      v-for="s in upstreamSuppliers"
-                      :key="s.name"
+                    <div v-for="s in upstreamSuppliers" :key="s.name"
                       class="p-3 rounded-lg cursor-pointer transition-all hover:shadow-md"
-                      style="background: #EEF3F8; border: 1px solid #BDD0E6"
-                      @click="selectedNode = s"
-                    >
+                      style="background: #EEF3F8; border: 1px solid #BDD0E6" @click="selectedNode = s">
                       <div class="flex justify-between items-center">
                         <div class="flex items-center gap-2">
                           <div class="w-2 h-2 rounded-full" style="background: #1E293B"></div>
@@ -1029,13 +1037,9 @@ function exportPng(which: "cross" | "upstream") {
                 <div>
                   <p class="text-xs font-bold mb-2" style="color: #888">⬇️ 下游买家</p>
                   <div class="space-y-2">
-                    <div
-                      v-for="b in upstreamBuyers"
-                      :key="b.name"
+                    <div v-for="b in upstreamBuyers" :key="b.name"
                       class="p-3 rounded-lg cursor-pointer transition-all hover:shadow-md"
-                      style="background: #F0FAF0; border: 1px solid #A8D8A8"
-                      @click="selectedNode = b"
-                    >
+                      style="background: #F0FAF0; border: 1px solid #A8D8A8" @click="selectedNode = b">
                       <div class="flex justify-between items-center">
                         <div class="flex items-center gap-2">
                           <div class="w-2 h-2 rounded-full" style="background: #27AE60"></div>
@@ -1083,8 +1087,10 @@ function exportPng(which: "cross" | "upstream") {
             <div class="flex justify-between items-center mb-4">
               <div class="flex gap-2">
                 <el-input v-model="nodeSearch" placeholder="搜索节点..." size="small" style="width: 150px" />
-                <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD" @click="highlightSearch">节点检索</el-button>
-                <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C" @click="exportPng('cross')">导出 PNG</el-button>
+                <el-button size="small" style="color: #1A3A5C; border-color: #D0D5DD"
+                  @click="highlightSearch">节点检索</el-button>
+                <el-button size="small" type="primary" style="background: #1A3A5C; border-color: #1A3A5C"
+                  @click="exportPng('cross')">导出 PNG</el-button>
               </div>
             </div>
             <div class="text-xs mb-2 mt-2" style="color: #aaa">💡 拖动节点定位 | 滚轮缩放 | 鼠标悬停查看详情</div>
@@ -1097,7 +1103,9 @@ function exportPng(which: "cross" | "upstream") {
             <div class="card-title">节点情报详情</div>
 
             <div v-if="!selectedNode" class="flex flex-col items-center justify-center py-24">
-              <el-icon :size="48" style="color: #D0D5DD"><Search /></el-icon>
+              <el-icon :size="48" style="color: #D0D5DD">
+                <Search />
+              </el-icon>
               <p class="mt-4 text-sm" style="color: #aaa">👆 请点击图谱中的节点</p>
               <p class="text-xs mt-1" style="color: #ccc">查看该人员的详细情报</p>
             </div>
@@ -1109,7 +1117,8 @@ function exportPng(which: "cross" | "upstream") {
                     <p class="text-2xl font-extrabold" style="color: #C0392C">
                       {{ selectedNodeDetail.isCase ? selectedNodeDetail.name : maskName(selectedNodeDetail.name) }}
                     </p>
-                    <p class="text-sm mt-1" style="color: #888">{{ selectedNodeDetail.role || (selectedNodeDetail.isCase ? '涉案案件' : '关联人员') }}</p>
+                    <p class="text-sm mt-1" style="color: #888">{{ selectedNodeDetail.role || (selectedNodeDetail.isCase
+                      ? '涉案案件' : '关联人员') }}</p>
                   </div>
                   <div class="text-right">
                     <p class="text-3xl font-black" style="color: #C0392B">{{ selectedNodeDetail.count }}</p>
@@ -1128,26 +1137,31 @@ function exportPng(which: "cross" | "upstream") {
                   <span class="text-xs" style="color: #555">{{ selectedNodeDetail.crimeType }}</span>
                 </div>
                 <div v-if="selectedNodeDetail.keywordRoles?.length" class="mt-2 flex gap-1 flex-wrap">
-                  <span v-for="r in selectedNodeDetail.keywordRoles" :key="r" class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[10px]">
+                  <span v-for="r in selectedNodeDetail.keywordRoles" :key="r"
+                    class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[10px]">
                     # {{ r }}
                   </span>
                 </div>
-                
+
                 <!-- 资金往来 -->
-                <div v-if="selectedNodeDetail.moneyIn !== undefined || selectedNodeDetail.moneyOut !== undefined" class="mt-2 p-2 rounded bg-gray-50 border border-gray-100">
-                   <div v-if="selectedNodeDetail.moneyIn !== undefined" class="flex justify-between text-xs mb-1">
-                      <span style="color: #888">资金转入</span>
-                      <span class="font-mono font-bold" style="color: #27AE60">+{{ selectedNodeDetail.moneyIn.toLocaleString() }}</span>
-                   </div>
-                   <div v-if="selectedNodeDetail.moneyOut !== undefined" class="flex justify-between text-xs">
-                      <span style="color: #888">资金转出</span>
-                      <span class="font-mono font-bold" style="color: #C0392B">-{{ selectedNodeDetail.moneyOut.toLocaleString() }}</span>
-                   </div>
+                <div v-if="selectedNodeDetail.moneyIn !== undefined || selectedNodeDetail.moneyOut !== undefined"
+                  class="mt-2 p-2 rounded bg-gray-50 border border-gray-100">
+                  <div v-if="selectedNodeDetail.moneyIn !== undefined" class="flex justify-between text-xs mb-1">
+                    <span style="color: #888">资金转入</span>
+                    <span class="font-mono font-bold" style="color: #27AE60">+{{
+                      selectedNodeDetail.moneyIn.toLocaleString() }}</span>
+                  </div>
+                  <div v-if="selectedNodeDetail.moneyOut !== undefined" class="flex justify-between text-xs">
+                    <span style="color: #888">资金转出</span>
+                    <span class="font-mono font-bold" style="color: #C0392B">-{{
+                      selectedNodeDetail.moneyOut.toLocaleString() }}</span>
+                  </div>
                 </div>
 
                 <div v-if="selectedNodeDetail.commFrequency" class="info-item">
                   <span class="text-xs font-semibold" style="color: #888">通讯频率</span>
-                  <span class="text-sm font-bold" style="color: #1A3A5C">{{ selectedNodeDetail.commFrequency }} 次联络</span>
+                  <span class="text-sm font-bold" style="color: #1A3A5C">{{ selectedNodeDetail.commFrequency }}
+                    次联络</span>
                 </div>
 
                 <div v-if="selectedNodeDetail.caseId" class="info-item">
@@ -1160,28 +1174,37 @@ function exportPng(which: "cross" | "upstream") {
                 </div>
 
                 <!-- 案件上下游关系 -->
-                <div v-if="selectedNodeDetail.isCase && selectedCaseChain" class="mt-4 pt-3 border-t border-dashed border-gray-200">
+                <div v-if="selectedNodeDetail.isCase && selectedCaseChain"
+                  class="mt-4 pt-3 border-t border-dashed border-gray-200">
                   <p class="text-xs font-bold mb-2" style="color: #1A3A5C">⛓️ 案件上下游关系</p>
                   <div class="grid grid-cols-2 gap-2">
-                    <div v-if="selectedCaseChain.upstream?.length" class="p-2 rounded border border-slate-100 bg-slate-50">
-                      <p class="text-[10px] font-bold text-slate-800 mb-1">⬆️ 供应商 ({{ selectedCaseChain.upstream.length }})</p>
-                      <div v-for="(item, idx) in selectedCaseChain.upstream.slice(0, 3)" :key="idx" class="text-[9px] text-slate-500 truncate">
+                    <div v-if="selectedCaseChain.upstream?.length"
+                      class="p-2 rounded border border-slate-100 bg-slate-50">
+                      <p class="text-[10px] font-bold text-slate-800 mb-1">⬆️ 供应商 ({{ selectedCaseChain.upstream.length
+                        }})</p>
+                      <div v-for="(item, idx) in selectedCaseChain.upstream.slice(0, 3)" :key="idx"
+                        class="text-[9px] text-slate-500 truncate">
                         {{ item.name }}
                       </div>
                     </div>
-                    <div v-if="selectedCaseChain.downstream?.length" class="p-2 rounded border border-green-50 bg-green-50">
-                      <p class="text-[10px] font-bold text-green-800 mb-1">⬇️ 买家 ({{ selectedCaseChain.downstream.length }})</p>
-                      <div v-for="(item, idx) in selectedCaseChain.downstream.slice(0, 3)" :key="idx" class="text-[9px] text-green-600 truncate">
+                    <div v-if="selectedCaseChain.downstream?.length"
+                      class="p-2 rounded border border-green-50 bg-green-50">
+                      <p class="text-[10px] font-bold text-green-800 mb-1">⬇️ 买家 ({{ selectedCaseChain.downstream.length
+                        }})</p>
+                      <div v-for="(item, idx) in selectedCaseChain.downstream.slice(0, 3)" :key="idx"
+                        class="text-[9px] text-green-600 truncate">
                         {{ item.name }}
                       </div>
                     </div>
                   </div>
-                  <div v-if="!selectedCaseChain.upstream?.length && !selectedCaseChain.downstream?.length" class="text-xs text-center py-2 text-gray-400">
+                  <div v-if="!selectedCaseChain.upstream?.length && !selectedCaseChain.downstream?.length"
+                    class="text-xs text-center py-2 text-gray-400">
                     暂无链条数据
                   </div>
                 </div>
                 <!-- 累犯情报 -->
-                <div v-if="selectedNodeDetail.isRecidivist" class="info-item" style="background: #FFF5F5; border-radius: 4px; padding: 4px 8px; margin-top: 8px">
+                <div v-if="selectedNodeDetail.isRecidivist" class="info-item"
+                  style="background: #FFF5F5; border-radius: 4px; padding: 4px 8px; margin-top: 8px">
                   <span class="text-xs font-bold" style="color: #C0392B">⚠ 累犯风险</span>
                   <span class="text-xs font-bold" style="color: #C0392B">该人员有同类违法前科</span>
                 </div>
@@ -1190,40 +1213,52 @@ function exportPng(which: "cross" | "upstream") {
               <!-- 证据链展示 (当前案情重心) -->
               <div v-if="selectedNodeDetail.evidence" class="mt-4">
                 <p class="text-xs font-bold mb-2" style="color: #1A3A5C">
-                  ⛓️ 关联证据 (共 {{ (selectedNodeDetail.evidence.transactions?.length || 0) + (selectedNodeDetail.evidence.logistics?.length || 0) + (selectedNodeDetail.evidence.communications?.length || 0) }} 条)
+                  ⛓️ 关联证据 (共 {{ (selectedNodeDetail.evidence.transactions?.length || 0) +
+                    (selectedNodeDetail.evidence.logistics?.length || 0) +
+                    (selectedNodeDetail.evidence.communications?.length || 0) }} 条)
                 </p>
                 <div class="space-y-2">
                   <!-- 交易证据 -->
-                  <div v-if="selectedNodeDetail.evidence.transactions?.length" class="p-2 rounded border border-blue-100" style="background: #F0F7FF">
+                  <div v-if="selectedNodeDetail.evidence.transactions?.length"
+                    class="p-2 rounded border border-blue-100" style="background: #F0F7FF">
                     <p class="text-[11px] font-bold text-blue-800 mb-1">💰 交易记录 (展示前3条)</p>
-                    <div v-for="(t, idx) in selectedNodeDetail.evidence.transactions.slice(0, 3)" :key="idx" class="text-[10px] text-blue-700 flex justify-between">
-                       <span>{{ t.type }}: {{ parseFloat(t.amount || 0).toLocaleString() }}元</span>
-                       <span class="font-mono">{{ t.time }}</span>
+                    <div v-for="(t, idx) in selectedNodeDetail.evidence.transactions.slice(0, 3)" :key="idx"
+                      class="text-[10px] text-blue-700 flex justify-between">
+                      <span>{{ t.type }}: {{ parseFloat(t.amount || 0).toLocaleString() }}元</span>
+                      <span class="font-mono">{{ t.time }}</span>
                     </div>
                   </div>
                   <!-- 物流证据 -->
-                  <div v-if="selectedNodeDetail.evidence.logistics?.length" class="p-2 rounded border border-green-100" style="background: #F6FFED">
+                  <div v-if="selectedNodeDetail.evidence.logistics?.length" class="p-2 rounded border border-green-100"
+                    style="background: #F6FFED">
                     <p class="text-[11px] font-bold text-green-800 mb-1">📦 物流发货 (展示前3条)</p>
-                    <div v-for="(l, idx) in selectedNodeDetail.evidence.logistics.slice(0, 3)" :key="idx" class="text-[10px] text-green-700">
-                       {{ l.type }}: {{ l.description }} <span class="font-mono opacity-70">({{ l.time }})</span>
+                    <div v-for="(l, idx) in selectedNodeDetail.evidence.logistics.slice(0, 3)" :key="idx"
+                      class="text-[10px] text-green-700">
+                      {{ l.type }}: {{ l.description }} <span class="font-mono opacity-70">({{ l.time }})</span>
                     </div>
                   </div>
                   <!-- 通讯证据 -->
-                  <div v-if="selectedNodeDetail.evidence.communications?.length" class="p-2 rounded border border-purple-100" style="background: #F9F0FF">
+                  <div v-if="selectedNodeDetail.evidence.communications?.length"
+                    class="p-2 rounded border border-purple-100" style="background: #F9F0FF">
                     <p class="text-[11px] font-bold text-purple-800 mb-1">💬 通讯记录 (展示前3条)</p>
-                    <div v-for="(c, idx) in selectedNodeDetail.evidence.communications.slice(0, 3)" :key="idx" class="text-[10px] text-purple-700">
-                       <span class="font-bold">[{{ c.type }}]</span> {{ c.content }} 
-                       <span v-if="c.hit_keywords?.length" class="px-1 bg-red-100 text-red-500 rounded"> {{ c.hit_keywords.join(',') }}</span>
+                    <div v-for="(c, idx) in selectedNodeDetail.evidence.communications.slice(0, 3)" :key="idx"
+                      class="text-[10px] text-purple-700">
+                      <span class="font-bold">[{{ c.type }}]</span> {{ c.content }}
+                      <span v-if="c.hit_keywords?.length" class="px-1 bg-red-100 text-red-500 rounded"> {{
+                        c.hit_keywords.join(',') }}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               <!-- 往期案件详情 -->
-              <div v-if="selectedNodeDetail.relatedCasesDetail?.length" class="mt-5 pt-4 border-t border-dashed border-gray-200">
-                <p class="text-xs font-bold mb-2" style="color: #888">📂 往期案件档案 (共 {{ selectedNodeDetail.relatedCasesDetail.length }} 条)</p>
+              <div v-if="selectedNodeDetail.relatedCasesDetail?.length"
+                class="mt-5 pt-4 border-t border-dashed border-gray-200">
+                <p class="text-xs font-bold mb-2" style="color: #888">📂 往期案件档案 (共 {{
+                  selectedNodeDetail.relatedCasesDetail.length }} 条)</p>
                 <div class="space-y-1">
-                  <div v-for="(rc, idx) in selectedNodeDetail.relatedCasesDetail.slice(0, 3)" :key="idx" class="p-2 rounded bg-gray-50 border border-gray-100 text-[10px]">
+                  <div v-for="(rc, idx) in selectedNodeDetail.relatedCasesDetail.slice(0, 3)" :key="idx"
+                    class="p-2 rounded bg-gray-50 border border-gray-100 text-[10px]">
                     <div class="flex justify-between font-bold text-gray-500">
                       <span>案件名称: {{ rc.case_no || rc.case_id || "未知" }}</span>
                       <span>{{ parseFloat(rc.amount || 0).toLocaleString() }}元</span>

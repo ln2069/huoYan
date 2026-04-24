@@ -17,8 +17,8 @@ export type GetUpstreamResponse = ApiResult<UpstreamGraph>;
 export interface RelationsRepository {
   getCrossCaseGraph(req?: GetCrossCaseRequest): Promise<GetCrossCaseResponse>;
   getUpstreamGraph(req: GetUpstreamRequest): Promise<GetUpstreamResponse>;
-  getFundFlows(): Promise<any>;
-  getPersonLedger(): Promise<any>;
+  getFundFlows(req?: any): Promise<any>;
+  getPersonLedger(req?: any): Promise<any>;
   getRecidivism(personName: string): Promise<any>;
   getUpstreamList(caseId: string | number): Promise<any>;
   getDownstreamList(caseId: string | number): Promise<any>;
