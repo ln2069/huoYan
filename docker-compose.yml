@@ -2,13 +2,15 @@ services:
   frontend:
     build: .
     container_name: huoyan_frontend
+    environment:
+      BACKEND_HOST: ${BACKEND_HOST:-huoyan_backend}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
     ports:
       - "3000:80"
-    depends_on:
-      - backend
+    networks:
+      - huoyan_net
 
-  backend:
-    image: huoyan_backend:latest
-    container_name: huoyan_backend
-    ports:
-      - "8000:8000"
+networks:
+  huoyan_net:
+    external: true
+    name: huoyan_net

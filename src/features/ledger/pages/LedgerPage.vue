@@ -218,8 +218,12 @@ async function exportExcel(type: 'persons' | 'transactions') {
   const loading = ElLoading.service({ fullscreen: true, text: '正在导出数据...' });
 
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
     let requestUrl = `${baseUrl}/export/csv?type=${type}`;
+
+    const username = localStorage.getItem("basic_auth_username");
+    const password = localStorage.getItem("basic_auth_password");
+    const authHeader = username && password ? `Basic ${btoa(`${username}:${password}`)}` : null;
 
     if (type === 'transactions' && fundFilter.value.case_no) {
       requestUrl += `&case_no=${encodeURIComponent(fundFilter.value.case_no)}`;
@@ -231,6 +235,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
       method: 'GET',
       headers: {
         'Accept': 'text/csv',
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
     });
 
