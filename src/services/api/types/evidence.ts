@@ -79,6 +79,8 @@ export interface UploadFileResponse {
   rawText?: string;
   fileName?: string;
   recordCount?: number;
+  format_detected?: string;
+  extracted_transactions?: number;
 }
 
 export interface ImportEvidenceRequest {

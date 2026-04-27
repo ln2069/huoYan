@@ -472,11 +472,26 @@ onMounted(() => {
         <div v-if="detailTab === 'chat'">
           <div v-if="detailData?.communications && detailData.communications.length > 0">
             <div v-for="(comm, index) in detailData.communications" :key="index"
-              class="rounded-lg p-4 text-sm bg-gray-50 border border-gray-200 font-mono leading-relaxed mb-2">
+              class="rounded-lg p-4 text-sm font-mono leading-relaxed mb-2"
+              :class="comm.is_deleted ? 'bg-red-50 border-2 border-red-300' : 'bg-gray-50 border border-gray-200'">
               <div class="flex items-center gap-2 mb-2 text-xs text-gray-500">
                 <span class="font-bold text-[#1A3A5C]">{{ comm.initiator || '未知' }}</span>
                 <span>发送给</span>
                 <span class="font-bold text-[#1A3A5C]">{{ comm.receiver || '未知' }}</span>
+                <span v-if="comm.media_type" class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                  :class="{
+                    'bg-blue-100 text-blue-700': comm.media_type === '文本',
+                    'bg-purple-100 text-purple-700': comm.media_type === '图片',
+                    'bg-orange-100 text-orange-700': comm.media_type === '音频',
+                    'bg-green-100 text-green-700': comm.media_type === '转账',
+                    'bg-cyan-100 text-cyan-700': comm.media_type === '语音聊天',
+                    'bg-gray-200 text-gray-600': !['文本','图片','音频','转账','语音聊天'].includes(comm.media_type),
+                  }">
+                  {{ comm.media_type }}
+                </span>
+                <span v-if="comm.is_deleted" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">
+                  已删除
+                </span>
                 <span class="ml-auto">{{ comm.communication_time }}</span>
               </div>
               <p v-html="highlightText(comm.content)"></p>
