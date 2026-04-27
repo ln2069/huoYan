@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
+import type { SuspiciousClue, CaseSummary } from "@/entities/case";
 
 const searchText = ref("");
 const filterType = ref("");
@@ -10,30 +11,47 @@ const loading = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(10);
 
-const cluesList = ref<any[]>([]);
+const casesList = ref<CaseSummary[]>([]);
+const selectedCaseId = ref<string>("");
+
+const cluesList = ref<SuspiciousClue[]>([]);
 const stats = ref({
   high_risk: 0,
   medium_risk: 0,
   low_risk: 0,
 });
 
-// 加载可疑线索数据
+async function loadCases() {
+  try {
+    const response = await repositories.cases.listCases({});
+    if (Array.isArray(response)) {
+      casesList.value = response;
+    } else {
+      const data = (response as any).data || response;
+      casesList.value = data.items || data.list || data.results || [];
+    }
+    if (casesList.value.length > 0 && !selectedCaseId.value) {
+      selectedCaseId.value = String(casesList.value[0].id);
+      await loadClues();
+    }
+  } catch (error) {
+    ElMessage.error("获取案件列表失败");
+    console.error("获取案件列表失败:", error);
+  }
+}
+
 async function loadClues() {
+  if (!selectedCaseId.value) return;
   loading.value = true;
   try {
-    const caseId = "4"; // 默认演示案件
-    const response = await repositories.cases.getSuspiciousClues(caseId);
+    const response = await repositories.cases.getSuspiciousClues(selectedCaseId.value);
 
-    // 后端返回的是字典 { suspicion_clues: [], price_clues: [], role_clues: [] }
-    const data = (response as any).data || response;
-
-    const suspicion = data.suspicion_clues || [];
-    const price = data.price_clues || [];
-    const role = data.role_clues || [];
+    const suspicion = response.suspicion_clues || [];
+    const price = response.price_clues || [];
+    const role = response.role_clues || [];
 
     cluesList.value = [...suspicion, ...price, ...role];
 
-    // 统计逻辑保持不变，但现在基于合并后的列表
     stats.value = {
       high_risk: cluesList.value.filter(c => c.severity_level === '刑事犯罪' || c.score >= 8).length,
       medium_risk: cluesList.value.filter(c => c.score >= 5 && c.score < 8).length,
@@ -46,6 +64,11 @@ async function loadClues() {
     loading.value = false;
   }
 }
+
+watch(selectedCaseId, () => {
+  currentPage.value = 1;
+  loadClues();
+});
 
 const filteredList = computed(() => {
   return cluesList.value.filter((item) => {
@@ -65,7 +88,7 @@ function resetFilter() {
 }
 
 onMounted(() => {
-  loadClues();
+  loadCases();
 });
 </script>
 
@@ -124,12 +147,15 @@ onMounted(() => {
       </div>
 
       <div class="flex gap-4 mb-6 items-center">
+        <el-select v-model="selectedCaseId" placeholder="选择案件" class="!w-[220px]" size="default">
+          <el-option v-for="c in casesList" :key="c.id" :label="`${c.case_no} / ${c.suspect_name || '未知'}`" :value="String(c.id)" />
+        </el-select>
         <el-input v-model="searchText" placeholder="搜索线索内容/罪名" :prefix-icon="Search" class="!w-[300px]" size="default"
           clearable />
         <el-select v-model="filterType" placeholder="线索类型" class="!w-[180px]" size="default" clearable>
           <el-option label="主观明知" value="主观明知" />
           <el-option label="价格异常" value="价格异常" />
-          <el-option label="物流异常" value="物流异常" />
+          <el-option label="角色异常" value="角色异常" />
         </el-select>
         <el-button @click="resetFilter" class="px-6">重置</el-button>
       </div>
