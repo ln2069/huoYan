@@ -58,16 +58,7 @@ const nav = [
   { to: "/dashboard", label: "数据看板", icon: DataBoard },
   { to: "/cases", label: "案件管理", icon: FolderOpened },
   { to: "/evidence-list", label: "可疑线索", icon: Document },
-  {
-    to: "/evidence",
-    label: "智能证据解析",
-    icon: Cpu,
-    children: [
-      { to: "/evidence/chat", label: "聊天记录解析" },
-      { to: "/evidence/transfer", label: "资金流水解析" },
-      { to: "/evidence/logistics", label: "物流记录解析" },
-    ],
-  },
+  { to: "/evidence", label: "智能证据解析", icon: Cpu },
   {
     to: "/relations",
     label: "关联分析",
@@ -96,8 +87,6 @@ watch(
   (newPath) => {
     if (newPath === "/ledger" || newPath.startsWith("/ledger/")) {
       expandedNav.value = "/ledger";
-    } else if (newPath === "/evidence" || newPath.startsWith("/evidence/")) {
-      expandedNav.value = "/evidence";
     } else if (newPath === "/relations" || newPath.startsWith("/relations/")) {
       expandedNav.value = "/relations";
     } else {
@@ -114,8 +103,6 @@ function isParentActive(parentPath: string) {
 function handleParentNavClick(parentPath: string) {
   if (parentPath === "/ledger") {
     router.push("/ledger/person");
-  } else if (parentPath === "/evidence") {
-    router.push("/evidence/chat");
   } else if (parentPath === "/relations") {
     router.push("/relations/upstream");
   }

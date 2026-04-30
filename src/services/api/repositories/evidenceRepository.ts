@@ -4,20 +4,13 @@ import { httpClient } from "@/services/api/client";
 
 function mapUploadPath(evidenceType: EvidenceUploadType): string {
   if (evidenceType === "chat") return "/upload/communications";
-  if (evidenceType === "transfer") return "/upload/transactions";
-  return "/upload/logistics";
+  return "/upload/communications"; // Default to chat
 }
 
 export function createApiEvidenceRepository(): EvidenceRepository {
   return {
     async analyzeChat(req) {
       return post("/evidence/analyze-chat", req);
-    },
-    async analyzeTransfer(req) {
-      return post("/evidence/analyze-transfer", req);
-    },
-    async analyzeLogistics(req) {
-      return post("/evidence/analyze-logistics", req);
     },
     async analyzeEvidence(req) {
       return post("/analyze/evidence", req);

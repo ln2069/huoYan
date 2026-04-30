@@ -8,56 +8,9 @@ export interface AnalyzeChatRequest {
   rawText: string;
 }
 
-export interface AnalyzeTransferRequest {
-  records: Array<{
-    payer: string;
-    payee: string;
-    amount: number;
-    time: string;
-    channel: string;
-    caseId?: string;
-  }>;
-}
-
-export interface AnalyzeLogisticsRequest {
-  records: Array<{
-    expressNo: string;
-    sender: string;
-    receiver: string;
-    time: string;
-    channel?: string;
-    caseId?: string;
-  }>;
-}
-
-export interface AnalyzeTransferResponse {
-  totalAmount: number;
-  transactionCount: number;
-  personCount: number;
-  topCounterparties: Array<{ name: string; amount: number; percent: number }>;
-  records: AnalyzeTransferRequest["records"];
-}
-
-export interface AnalyzeLogisticsResponse {
-  totalShipments: number;
-  expressCount: number;
-  personCount: number;
-  suspiciousShipments: Array<{
-    expressNo: string;
-    sender: string;
-    receiver: string;
-    time: string;
-    channel: string;
-    reason: string;
-  }>;
-  records: AnalyzeLogisticsRequest["records"];
-}
-
 export type AnalyzeChatResponse = ApiResult<EvidenceAnalysisResult>;
-export type AnalyzeTransferResponseResult = ApiResult<AnalyzeTransferResponse>;
-export type AnalyzeLogisticsResponseResult = ApiResult<AnalyzeLogisticsResponse>;
 
-export type EvidenceUploadType = "chat" | "transfer" | "logistics";
+export type EvidenceUploadType = "chat";
 
 export interface UploadFileRequest {
   file: File;
@@ -84,10 +37,10 @@ export interface UploadFileResponse {
 }
 
 export interface ImportEvidenceRequest {
-  evidenceType: "chat" | "transfer" | "logistics";
+  evidenceType: "chat";
   caseId?: string;
   rawText: string;
-  analysisData: AnalyzeChatResponse["data"] | AnalyzeTransferResponse | AnalyzeLogisticsResponse;
+  analysisData: AnalyzeChatResponse["data"];
 }
 
 export interface ImportEvidenceResponse {
@@ -102,8 +55,6 @@ export type ImportEvidenceResponseResult = ApiResult<ImportEvidenceResponse>;
 
 export interface EvidenceRepository {
   analyzeChat(req: AnalyzeChatRequest): Promise<AnalyzeChatResponse>;
-  analyzeTransfer(req: AnalyzeTransferRequest): Promise<AnalyzeTransferResponseResult>;
-  analyzeLogistics(req: AnalyzeLogisticsRequest): Promise<AnalyzeLogisticsResponseResult>;
   analyzeEvidence(req: { evidence_text: string, evidence_type: string, case_id?: string | number }): Promise<any>;
   uploadFile(req: UploadFileRequest): Promise<UploadFileResponse>;
   importEvidence(req: ImportEvidenceRequest): Promise<ImportEvidenceResponseResult>;

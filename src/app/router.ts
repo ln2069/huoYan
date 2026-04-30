@@ -22,23 +22,6 @@ const routes: RouteRecordRaw[] = [
     path: "/evidence",
     name: "evidence",
     component: () => import("@/features/evidence/pages/EvidencePage.vue"),
-    children: [
-      {
-        path: "chat",
-        name: "evidence-chat",
-        component: { render: () => null },
-      },
-      {
-        path: "transfer",
-        name: "evidence-transfer",
-        component: { render: () => null },
-      },
-      {
-        path: "logistics",
-        name: "evidence-logistics",
-        component: { render: () => null },
-      },
-    ],
   },
   {
     path: "/evidence-list",
