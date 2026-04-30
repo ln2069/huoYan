@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from "vue";
 import { useRoute, RouterView } from "vue-router";
-import { ElButton, ElTable, ElTableColumn, ElDialog, ElInput, ElSelect, ElOption, ElMessage, ElCheckbox, ElLoading, ElIcon } from "element-plus";
-import { Document, Download, Edit, Search } from "@element-plus/icons-vue";
+import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessage, ElCheckbox, ElLoading, ElIcon } from "element-plus";
+import { Document, Download, Search } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
-import { maskPhone, maskName } from "@/utils/masking";
+import { maskName } from "@/utils/masking";
 
 const route = useRoute();
 const ledgerTab = ref<"fund" | "person" | "report" | "evidence">("person");
@@ -27,7 +27,6 @@ watch(
 );
 
 // 加载状态
-const loading = ref(false);
 const fundLoading = ref(false);
 const personLoading = ref(false);
 const isMasked = ref(true);
@@ -217,11 +216,15 @@ function resetPersonFilter() {
 // 导出功能
 async function exportExcel(type: 'persons' | 'transactions') {
   const loading = ElLoading.service({ fullscreen: true, text: '正在导出数据...' });
-  
+
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
     let requestUrl = `${baseUrl}/export/csv?type=${type}`;
-    
+
+    const username = localStorage.getItem("basic_auth_username");
+    const password = localStorage.getItem("basic_auth_password");
+    const authHeader = username && password ? `Basic ${btoa(`${username}:${password}`)}` : null;
+
     if (type === 'transactions' && fundFilter.value.case_no) {
       requestUrl += `&case_no=${encodeURIComponent(fundFilter.value.case_no)}`;
     } else if (type === 'persons' && personFilter.value.case_no) {
@@ -232,13 +235,14 @@ async function exportExcel(type: 'persons' | 'transactions') {
       method: 'GET',
       headers: {
         'Accept': 'text/csv',
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
     });
-    
+
     if (!response.ok) {
       throw new Error('导出失败');
     }
-    
+
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -248,7 +252,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     ElMessage.success('导出成功');
   } catch (error) {
     ElMessage.error('导出失败，请稍后重试');
@@ -290,7 +294,8 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <h3 class="card-title !mb-0">💸 资金流水明细</h3>
           <div class="flex gap-2">
             <el-checkbox v-model="isMasked" label="脱敏显示" border size="small" class="mr-2" />
-            <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD" @click="exportExcel('transactions')">导出 Excel</el-button>
+            <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD"
+              @click="exportExcel('transactions')">导出 Excel</el-button>
           </div>
         </div>
         <div class="flex flex-wrap gap-4 mb-4 items-center">
@@ -299,10 +304,12 @@ async function exportExcel(type: 'persons' | 'transactions') {
           </el-select>
           <el-input v-model="fundFilter.payer" placeholder="付款方" :prefix-icon="Search" class="!w-[140px]" clearable />
           <el-input v-model="fundFilter.payee" placeholder="收款方" :prefix-icon="Search" class="!w-[140px]" clearable />
-          <el-date-picker v-model="fundFilter.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 260px" />
+          <el-date-picker v-model="fundFilter.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期"
+            end-placeholder="结束日期" style="width: 260px" />
           <el-button @click="resetFundFilter">重置</el-button>
         </div>
-        <el-table :data="fundRecords.slice((fundCurrentPage - 1) * fundPageSize, fundCurrentPage * fundPageSize)" stripe class="data-table" v-loading="fundLoading">
+        <el-table :data="fundRecords.slice((fundCurrentPage - 1) * fundPageSize, fundCurrentPage * fundPageSize)" stripe
+          class="data-table" v-loading="fundLoading">
           <el-table-column prop="case_no" label="案件名称" min-width="140">
             <template #default="scope">
               <span class="font-mono text-xs text-[#1A3A5C] font-semibold">
@@ -313,12 +320,14 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <el-table-column prop="transaction_time" label="交易日期" min-width="120" />
           <el-table-column prop="payer" label="付款方" min-width="120">
             <template #default="scope">
-              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payer) : scope.row.payer }}</span>
+              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payer) : scope.row.payer
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="payee" label="收款方" min-width="120">
             <template #default="scope">
-              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payee) : scope.row.payee }}</span>
+              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.payee) : scope.row.payee
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column label="金额" min-width="140" align="right">
@@ -333,14 +342,9 @@ async function exportExcel(type: 'persons' | 'transactions') {
           </el-table-column>
         </el-table>
         <div class="flex justify-end mt-4">
-          <el-pagination
-            v-model:current-page="fundCurrentPage"
-            v-model:page-size="fundPageSize"
-            :page-sizes="[10, 20, 50]"
-            :total="fundRecords.length"
-            layout="total, sizes, prev, pager, next, jumper"
-            background
-          />
+          <el-pagination v-model:current-page="fundCurrentPage" v-model:page-size="fundPageSize"
+            :page-sizes="[10, 20, 50]" :total="fundRecords.length" layout="total, sizes, prev, pager, next, jumper"
+            background />
         </div>
       </div>
     </div>
@@ -374,7 +378,8 @@ async function exportExcel(type: 'persons' | 'transactions') {
           <h3 class="card-title !mb-0">👤 人物台账管理</h3>
           <div class="flex gap-2">
             <el-checkbox v-model="isMasked" label="脱敏显示" border size="small" class="mr-2" />
-            <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD" @click="exportExcel('persons')">导出 Excel</el-button>
+            <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD"
+              @click="exportExcel('persons')">导出 Excel</el-button>
           </div>
         </div>
         <div class="flex gap-4 mb-4 items-center">
@@ -387,28 +392,29 @@ async function exportExcel(type: 'persons' | 'transactions') {
           </el-select>
           <el-button @click="resetPersonFilter">重置</el-button>
         </div>
-        <el-table :data="filteredPersonList.slice((personCurrentPage - 1) * personPageSize, personCurrentPage * personPageSize)" stripe class="data-table" v-loading="personLoading">
+        <el-table
+          :data="filteredPersonList.slice((personCurrentPage - 1) * personPageSize, personCurrentPage * personPageSize)"
+          stripe class="data-table" v-loading="personLoading">
           <el-table-column label="关联案件" min-width="140">
             <template #default="scope">
               <span class="font-mono text-xs text-[#1A3A5C] font-semibold">
-                {{ scope.row.case_no || personFilter.case_no || (scope.row.linked_cases > 1 ? `涉及 ${scope.row.linked_cases} 个案件` : (scope.row.linked_cases === 1 ? '单案关联' : '未知案件')) }}
+                {{ scope.row.case_no || personFilter.case_no || (scope.row.linked_cases > 1 ? `涉及
+                ${scope.row.linked_cases} 个案件` : (scope.row.linked_cases === 1 ? '单案关联' : '未知案件')) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column prop="name" label="姓名" min-width="110">
             <template #default="scope">
-              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.name) : scope.row.name }}</span>
+              <span class="font-semibold text-[#1A3A5C]">{{ isMasked ? maskName(scope.row.name) : scope.row.name
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="role" label="角色" min-width="120">
             <template #default="scope">
-              <span
-                class="px-2 py-1 rounded text-xs font-semibold"
-                :style="{
-                  background: scope.row.role === '核心嫌疑人' ? '#FDECEA' : scope.row.role === '上游供货商' ? '#EEF3F8' : scope.row.role === '下游买家' ? '#F0FAF0' : '#F5F8FA',
-                  color: scope.row.role === '核心嫌疑人' ? '#C0392B' : scope.row.role === '上游供货商' ? '#1E293B' : scope.row.role === '下游买家' ? '#27AE60' : '#1A3A5C',
-                }"
-              >
+              <span class="px-2 py-1 rounded text-xs font-semibold" :style="{
+                background: scope.row.role === '核心嫌疑人' ? '#FDECEA' : scope.row.role === '上游供货商' ? '#EEF3F8' : scope.row.role === '下游买家' ? '#F0FAF0' : '#F5F8FA',
+                color: scope.row.role === '核心嫌疑人' ? '#C0392B' : scope.row.role === '上游供货商' ? '#1E293B' : scope.row.role === '下游买家' ? '#27AE60' : '#1A3A5C',
+              }">
                 {{ scope.row.role }}
               </span>
             </template>
@@ -435,44 +441,37 @@ async function exportExcel(type: 'persons' | 'transactions') {
           </el-table-column>
           <el-table-column prop="linked_cases" label="关联案件数" min-width="100" align="center">
             <template #default="scope">
-              <span
-                class="font-semibold"
-                :style="{ color: scope.row.linked_cases > 0 ? '#C0392B' : '#1A3A5C' }"
-              >{{ scope.row.linked_cases }} 件</span>
+              <span class="font-semibold" :style="{ color: scope.row.linked_cases > 0 ? '#C0392B' : '#1A3A5C' }">{{
+                scope.row.linked_cases }} 件</span>
             </template>
           </el-table-column>
 
           <el-table-column label="案件门槛判定" min-width="130" align="center">
             <template #default="{ row }">
-              <span 
-                class="px-2 py-0.5 rounded text-[10px] font-bold border"
-                :style="{
-                  background: row.illegal_business_amount >= 50000 ? '#FEF2F2' : (row.illegal_business_amount >= 20000 ? '#FFFBEB' : '#F0FDF4'),
-                  color: row.illegal_business_amount >= 50000 ? '#DC2626' : (row.illegal_business_amount >= 20000 ? '#D97706' : '#16A34A'),
-                  borderColor: row.illegal_business_amount >= 50000 ? '#FECACA' : (row.illegal_business_amount >= 20000 ? '#FDE68A' : '#BBF7D0')
-                }"
-              >
-                {{ row.illegal_business_amount >= 50000 ? '刑事立案标准' : (row.illegal_business_amount >= 20000 ? '重点关注' : '行政违法级别') }}
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border" :style="{
+                background: row.illegal_business_amount >= 50000 ? '#FEF2F2' : (row.illegal_business_amount >= 20000 ? '#FFFBEB' : '#F0FDF4'),
+                color: row.illegal_business_amount >= 50000 ? '#DC2626' : (row.illegal_business_amount >= 20000 ? '#D97706' : '#16A34A'),
+                borderColor: row.illegal_business_amount >= 50000 ? '#FECACA' : (row.illegal_business_amount >= 20000 ? '#FDE68A' : '#BBF7D0')
+              }">
+                {{ row.illegal_business_amount >= 50000 ? '刑事立案标准' : (row.illegal_business_amount >= 20000 ? '重点关注' :
+                  '行政违法级别') }}
               </span>
             </template>
           </el-table-column>
         </el-table>
         <div class="flex justify-end mt-4">
-          <el-pagination
-            v-model:current-page="personCurrentPage"
-            v-model:page-size="personPageSize"
-            :page-sizes="[10, 20, 50]"
-            :total="filteredPersonList.length"
-            layout="total, sizes, prev, pager, next, jumper"
-            background
-          />
+          <el-pagination v-model:current-page="personCurrentPage" v-model:page-size="personPageSize"
+            :page-sizes="[10, 20, 50]" :total="filteredPersonList.length"
+            layout="total, sizes, prev, pager, next, jumper" background />
         </div>
       </div>
     </div>
 
     <div v-show="ledgerTab === 'report'">
       <div class="app-card p-10 flex flex-col items-center justify-center" style="min-height: 500px">
-        <el-icon :size="80" style="color: #D0D5DD"><Document /></el-icon>
+        <el-icon :size="80" style="color: #D0D5DD">
+          <Document />
+        </el-icon>
         <h3 class="text-xl font-bold mt-8 mb-3 text-[#1A3A5C]">📊 统计报表</h3>
         <p class="text-base mb-2 text-gray-600">资金汇总、案件统计、证据分析报表</p>
         <p class="text-sm mb-8 text-gray-400">将在 P1 接入数据服务后启用，数据将自动汇总计算</p>

@@ -71,11 +71,16 @@ export interface UploadFileResponse {
   message: string;
   case_id: number;
   case_no: string;
+  case_amount?: number;
+  case_suspect_name?: string;
+  case_brand?: string;
   total_records: number;
   saved_records: number;
   rawText?: string;
   fileName?: string;
   recordCount?: number;
+  format_detected?: string;
+  extracted_transactions?: number;
 }
 
 export interface ImportEvidenceRequest {

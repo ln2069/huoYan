@@ -53,6 +53,8 @@ type UploadState = {
   rawText: string | null;
   error: string | null;
   formatErrorHint: string | null;
+  formatDetected: string | null;
+  extractedTransactions: number;
 };
 
 type TabUiState = {
@@ -92,6 +94,8 @@ function createUploadState(): UploadState {
     rawText: null,
     error: null,
     formatErrorHint: null,
+    formatDetected: null,
+    extractedTransactions: 0,
   };
 }
 
@@ -211,6 +215,8 @@ const uploadedFileName = computed(() => currentUploadState.value.fileName);
 const uploadedRawText = computed(() => currentUploadState.value.rawText);
 const uploadErrorMessage = computed(() => currentUploadState.value.error);
 const uploadFormatHint = computed(() => currentUploadState.value.formatErrorHint);
+const uploadFormatDetected = computed(() => currentUploadState.value.formatDetected);
+const uploadExtractedTxns = computed(() => currentUploadState.value.extractedTransactions);
 const currentTemplateHint = computed(() => templateHintsMap[evidenceTab.value]);
 
 const normalizedKeyActors = computed(() => {
@@ -433,6 +439,9 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
       throw new Error(response?.message || '上传失败');
     }
 
+    tabUiState[tab].upload.formatDetected = response.format_detected || null;
+    tabUiState[tab].upload.extractedTransactions = response.extracted_transactions || 0;
+
     if (evidenceType === "chat") {
       store.rawText = fileText;
     } else if (evidenceType === "transfer") {
@@ -442,13 +451,23 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     }
 
     await startAnalysis();
+    await loadCases();
+
+    const inferenceParts = [
+      response.case_amount !== undefined ? `金额 ${response.case_amount}` : "",
+      response.case_suspect_name ? `嫌疑人 ${response.case_suspect_name}` : "",
+      response.case_brand ? `品牌 ${response.case_brand}` : "",
+    ].filter(Boolean);
+    const inferenceText = inferenceParts.length > 0 ? `，案件已自动更新：${inferenceParts.join('，')}` : "";
+    const wechatExtra = response.format_detected === 'wechat' && response.extracted_transactions
+      ? `，自动提取 ${response.extracted_transactions} 条转账记录` : "";
 
     if (evidenceType === "chat") {
-      ElMessage.success(`通讯记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`通讯记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${wechatExtra}${inferenceText}`);
     } else if (evidenceType === "transfer") {
-      ElMessage.success(`资金流水「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`资金流水「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${inferenceText}`);
     } else {
-      ElMessage.success(`物流记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条`);
+      ElMessage.success(`物流记录「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${inferenceText}`);
     }
   } catch (error) {
     // 表格格式校验错误 — 专项友好提示
@@ -588,10 +607,20 @@ function downloadLastReport() {
               <div v-if="uploadDone && uploadedFileName" class="text-xs mb-2" style="color: #27AE60">
                 ✓ 已上传：{{ uploadedFileName }}，共 {{ uploadedRawText?.split("\n").length ?? 0 }} 行
               </div>
+              <div v-if="uploadDone && uploadFormatDetected === 'wechat'" class="mb-2">
+                <el-alert type="success" :closable="false" show-icon style="font-size: 13px">
+                  <template #title>
+                    <span>已识别为微信聊天记录格式，自动完成列名映射与内容提取</span>
+                  </template>
+                  <div v-if="uploadExtractedTxns > 0" class="mt-1 text-xs" style="color: #606266">
+                    同时自动提取 {{ uploadExtractedTxns }} 条转账记录至资金流水
+                  </div>
+                </el-alert>
+              </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -841,8 +870,8 @@ function downloadLastReport() {
               </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -862,8 +891,7 @@ function downloadLastReport() {
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
-              @click="startTransferAnalysis">
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing" @click="startTransferAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 
@@ -1040,8 +1068,8 @@ function downloadLastReport() {
               </div>
               <div v-if="uploadError" class="mb-2">
                 <el-alert type="error" :title="uploadErrorMessage ?? undefined" :closable="false" show-icon />
-                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon
-                  class="mt-1" style="font-size: 12px">
+                <el-alert v-if="uploadFormatHint" type="info" :closable="false" show-icon class="mt-1"
+                  style="font-size: 12px">
                   <template #title>
                     <span>请按系统模板字段上传，确保表头列名与模板一致。</span>
                   </template>
@@ -1057,8 +1085,7 @@ function downloadLastReport() {
             </div>
 
             <el-button type="primary" class="w-full mt-4 h-12 text-base font-bold"
-              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing"
-              @click="startLogisticsAnalysis">
+              style="background: #1A3A5C; border-color: #1A3A5C" :loading="isAnalyzing" @click="startLogisticsAnalysis">
               🚀 开始 AI 法律线索提取
             </el-button>
 

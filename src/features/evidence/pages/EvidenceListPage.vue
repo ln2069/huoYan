@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessage } from "element-plus";
 import { Search, Download } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
-import { maskName } from "@/utils/masking";
+import type { SuspiciousClue, CaseSummary } from "@/entities/case";
 
 const searchText = ref("");
 const filterType = ref("");
@@ -11,30 +11,47 @@ const loading = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(10);
 
-const cluesList = ref<any[]>([]);
+const casesList = ref<CaseSummary[]>([]);
+const selectedCaseId = ref<string>("");
+
+const cluesList = ref<SuspiciousClue[]>([]);
 const stats = ref({
   high_risk: 0,
   medium_risk: 0,
   low_risk: 0,
 });
 
-// 加载可疑线索数据
+async function loadCases() {
+  try {
+    const response = await repositories.cases.listCases({});
+    if (Array.isArray(response)) {
+      casesList.value = response;
+    } else {
+      const data = (response as any).data || response;
+      casesList.value = data.items || data.list || data.results || [];
+    }
+    if (casesList.value.length > 0 && !selectedCaseId.value) {
+      selectedCaseId.value = String(casesList.value[0].id);
+      await loadClues();
+    }
+  } catch (error) {
+    ElMessage.error("获取案件列表失败");
+    console.error("获取案件列表失败:", error);
+  }
+}
+
 async function loadClues() {
+  if (!selectedCaseId.value) return;
   loading.value = true;
   try {
-    const caseId = "4"; // 默认演示案件
-    const response = await repositories.cases.getSuspiciousClues(caseId);
-    
-    // 后端返回的是字典 { suspicion_clues: [], price_clues: [], role_clues: [] }
-    const data = (response as any).data || response;
-    
-    const suspicion = data.suspicion_clues || [];
-    const price = data.price_clues || [];
-    const role = data.role_clues || [];
-    
+    const response = await repositories.cases.getSuspiciousClues(selectedCaseId.value);
+
+    const suspicion = response.suspicion_clues || [];
+    const price = response.price_clues || [];
+    const role = response.role_clues || [];
+
     cluesList.value = [...suspicion, ...price, ...role];
-    
-    // 统计逻辑保持不变，但现在基于合并后的列表
+
     stats.value = {
       high_risk: cluesList.value.filter(c => c.severity_level === '刑事犯罪' || c.score >= 8).length,
       medium_risk: cluesList.value.filter(c => c.score >= 5 && c.score < 8).length,
@@ -47,6 +64,11 @@ async function loadClues() {
     loading.value = false;
   }
 }
+
+watch(selectedCaseId, () => {
+  currentPage.value = 1;
+  loadClues();
+});
 
 const filteredList = computed(() => {
   return cluesList.value.filter((item) => {
@@ -66,7 +88,7 @@ function resetFilter() {
 }
 
 onMounted(() => {
-  loadClues();
+  loadCases();
 });
 </script>
 
@@ -119,35 +141,33 @@ onMounted(() => {
           </div>
         </div>
         <div class="flex gap-2">
-          <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD" class="!rounded-md">导出报告</el-button>
+          <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD"
+            class="!rounded-md">导出报告</el-button>
         </div>
       </div>
 
       <div class="flex gap-4 mb-6 items-center">
-        <el-input v-model="searchText" placeholder="搜索线索内容/罪名" :prefix-icon="Search" class="!w-[300px]" size="default" clearable />
+        <el-select v-model="selectedCaseId" placeholder="选择案件" class="!w-[220px]" size="default">
+          <el-option v-for="c in casesList" :key="c.id" :label="`${c.case_no} / ${c.suspect_name || '未知'}`" :value="String(c.id)" />
+        </el-select>
+        <el-input v-model="searchText" placeholder="搜索线索内容/罪名" :prefix-icon="Search" class="!w-[300px]" size="default"
+          clearable />
         <el-select v-model="filterType" placeholder="线索类型" class="!w-[180px]" size="default" clearable>
           <el-option label="主观明知" value="主观明知" />
           <el-option label="价格异常" value="价格异常" />
-          <el-option label="物流异常" value="物流异常" />
+          <el-option label="角色异常" value="角色异常" />
         </el-select>
         <el-button @click="resetFilter" class="px-6">重置</el-button>
       </div>
 
-      <el-table 
-        :data="filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize)" 
-        stripe 
-        class="data-table" 
-        v-loading="loading"
-      >
+      <el-table :data="filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize)" stripe
+        class="data-table" v-loading="loading">
         <el-table-column prop="clue_type" label="线索类型" min-width="120">
           <template #default="{ row }">
-            <span
-              class="px-3 py-1 rounded text-xs font-bold"
-              :style="{
-                background: row.clue_type === '主观明知' ? '#EEF2FF' : row.clue_type === '价格异常' ? '#FFF1F2' : '#F0FDF4',
-                color: row.clue_type === '主观明知' ? '#4F46E5' : row.clue_type === '价格异常' ? '#E11D48' : '#16A34A',
-              }"
-            >
+            <span class="px-3 py-1 rounded text-xs font-bold" :style="{
+              background: row.clue_type === '主观明知' ? '#EEF2FF' : row.clue_type === '价格异常' ? '#FFF1F2' : '#F0FDF4',
+              color: row.clue_type === '主观明知' ? '#4F46E5' : row.clue_type === '价格异常' ? '#E11D48' : '#16A34A',
+            }">
               {{ row.clue_type }}
             </span>
           </template>
@@ -160,18 +180,12 @@ onMounted(() => {
         <el-table-column label="关键特征" min-width="160">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1.5">
-              <span 
-                v-if="typeof row.hit_keywords === 'string'"
-                class="px-2 py-0.5 bg-[#FEF2F2] text-[#DC2626] text-[11px] font-bold rounded border border-[#FECACA]"
-              >
+              <span v-if="typeof row.hit_keywords === 'string'"
+                class="px-2 py-0.5 bg-[#FEF2F2] text-[#DC2626] text-[11px] font-bold rounded border border-[#FECACA]">
                 {{ row.hit_keywords }}
               </span>
-              <span 
-                v-else
-                v-for="k in row.hit_keywords" 
-                :key="k" 
-                class="px-2 py-0.5 bg-[#FEF2F2] text-[#DC2626] text-[11px] font-bold rounded border border-[#FECACA]"
-              >
+              <span v-else v-for="k in row.hit_keywords" :key="k"
+                class="px-2 py-0.5 bg-[#FEF2F2] text-[#DC2626] text-[11px] font-bold rounded border border-[#FECACA]">
                 {{ k }}
               </span>
             </div>
@@ -179,18 +193,16 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="score" label="风险指数" min-width="100" align="center">
           <template #default="{ row }">
-            <span class="font-black text-sm" :class="row.score >= 8 ? 'text-red-600' : 'text-orange-600'">{{ row.score }}/10</span>
+            <span class="font-black text-sm" :class="row.score >= 8 ? 'text-red-600' : 'text-orange-600'">{{ row.score
+              }}/10</span>
           </template>
         </el-table-column>
         <el-table-column prop="severity_level" label="严重程度" min-width="110">
           <template #default="{ row }">
-            <span
-              class="px-2 py-0.5 rounded text-xs font-bold"
-              :style="{
-                background: row.severity_level === '刑事犯罪' ? '#FEF2F2' : '#F0FDF4',
-                color: row.severity_level === '刑事犯罪' ? '#DC2626' : '#16A34A',
-              }"
-            >{{ row.severity_level }}</span>
+            <span class="px-2 py-0.5 rounded text-xs font-bold" :style="{
+              background: row.severity_level === '刑事犯罪' ? '#FEF2F2' : '#F0FDF4',
+              color: row.severity_level === '刑事犯罪' ? '#DC2626' : '#16A34A',
+            }">{{ row.severity_level }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="crime_type" label="涉嫌罪名" min-width="200" show-overflow-tooltip>
@@ -200,16 +212,9 @@ onMounted(() => {
         </el-table-column>
       </el-table>
       <div class="flex justify-end mt-4">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50]"
-          :total="filteredList.length"
-          layout="total, sizes, prev, pager, next, jumper"
-          background
-        />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10, 20, 50]"
+          :total="filteredList.length" layout="total, sizes, prev, pager, next, jumper" background />
       </div>
     </div>
   </div>
 </template>
-
