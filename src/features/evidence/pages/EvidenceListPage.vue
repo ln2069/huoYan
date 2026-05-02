@@ -81,6 +81,75 @@ const filteredList = computed(() => {
   });
 });
 
+const exportLoading = ref(false);
+
+async function handleExport() {
+  if (!selectedCaseId.value) {
+    ElMessage.warning("请先选择一个案件");
+    return;
+  }
+  
+  exportLoading.value = true;
+  try {
+    // 1. 调用生成报告接口
+    // 注意：根据后端文档，参数 case_id 应通过 query 传递
+    const res = await repositories.cases.getCaseDetail(selectedCaseId.value);
+    const caseNo = (res as any).case?.case_no || selectedCaseId.value;
+    
+    // 生成报告
+    const genRes = await repositories.evidence.generateReport(selectedCaseId.value);
+    const data = (genRes as any).data || genRes;
+    
+    if (!data.download_url) {
+      throw new Error("后端未返回下载地址");
+    }
+
+    // 2. 异步下载（携带 Auth 头）
+    const httpClient = (await import("@/services/api/client")).httpClient;
+    let finalUrl = data.download_url;
+    
+    // 处理路径前缀去重
+    if (finalUrl.startsWith('http')) {
+      try {
+        const urlObj = new URL(finalUrl);
+        finalUrl = urlObj.pathname + urlObj.search;
+      } catch (e) { /* ignore */ }
+    }
+    if (httpClient.defaults.baseURL === '/api' && finalUrl.startsWith('/api/')) {
+      finalUrl = finalUrl.substring(4);
+    }
+
+    const response = await httpClient.get(finalUrl, { responseType: 'blob' });
+    
+    // 检查错误
+    if (response.data.type === 'application/json') {
+      const text = await response.data.text();
+      const json = JSON.parse(text);
+      throw new Error(json.message || '导出失败');
+    }
+
+    // 3. 触发本地保存
+    const blob = response.data;
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const fileName = data.report_id || `report_${caseNo}.txt`;
+    
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+    
+    ElMessage.success('报告导出成功');
+  } catch (error: any) {
+    console.error('导出失败:', error);
+    ElMessage.error(error.message || '导出报告失败，请重试');
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
 function resetFilter() {
   searchText.value = "";
   filterType.value = "";
@@ -139,11 +208,7 @@ onMounted(() => {
             <span class="text-xl">🔍</span>
             <h3 class="text-lg font-bold text-[#1A3A5C]">案件可疑线索</h3>
           </div>
-        </div>
-        <div class="flex gap-2">
-          <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD"
-            class="!rounded-md">导出报告</el-button>
-        </div>
+      </div>
       </div>
 
       <div class="flex gap-4 mb-6 items-center">

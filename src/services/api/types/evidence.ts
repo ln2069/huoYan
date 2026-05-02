@@ -58,4 +58,5 @@ export interface EvidenceRepository {
   analyzeEvidence(req: { evidence_text: string, evidence_type: string, case_id?: string | number }): Promise<any>;
   uploadFile(req: UploadFileRequest): Promise<UploadFileResponse>;
   importEvidence(req: ImportEvidenceRequest): Promise<ImportEvidenceResponseResult>;
+  downloadTemplate(url: string): Promise<any>;
 }

@@ -19,6 +19,25 @@ export type EvidenceConclusion =
         discountPercent: number;
         rawText: string;
         evidenceIds: string[];
+        is_anomaly?: boolean;
+        price_ratio?: number;
+        suggestion?: string;
+        comparison_details?: string;
+      };
+    }
+  | {
+      id: string;
+      type: "cross_validation";
+      severity: EvidenceSeverity;
+      title: string;
+      evidence: {
+        description: string;
+        source_a: string;
+        source_b: string;
+        is_consistent: boolean;
+        details?: string;
+        matching_records?: any[];
+        conflicting_records?: any[];
       };
     }
   | {

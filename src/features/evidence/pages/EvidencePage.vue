@@ -152,8 +152,8 @@ function clearEvidenceInput() {
 
 async function downloadTemplate(url: string, filename: string) {
   try {
-    const response = await httpClient.get(url, { responseType: 'blob' });
-    const blob = new Blob([response.data], { type: response.headers['content-type'] });
+    const response = await repositories.evidence.downloadTemplate(url);
+    const blob = new Blob([response.data], { type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
@@ -315,8 +315,10 @@ async function startAnalysis() {
       price_analysis: rawData.price_analysis || (rawData.price_anomaly ? {
         is_anomaly: rawData.price_anomaly.is_anomaly,
         price_ratio: rawData.price_anomaly.price_ratio,
-        suggestion: rawData.price_anomaly.suggestion
+        suggestion: rawData.price_anomaly.suggestion,
+        comparison_details: rawData.price_anomaly.comparison_details
       } : null),
+      cross_validation: rawData.cross_validation || null,
       subjective_knowledge: rawData.subjective_knowledge ? {
         ...rawData.subjective_knowledge,
         category_counts: rawData.subjective_knowledge.categories || rawData.subjective_knowledge.category_counts || {}
@@ -503,14 +505,61 @@ async function generateReport() {
   }
 }
 
-function downloadLastReport() {
+async function downloadLastReport() {
   if (lastReportUrl.value) {
-    const link = document.createElement('a');
-    link.href = lastReportUrl.value;
-    link.setAttribute('download', lastReportName.value || 'report.txt');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      // 智能处理 URL 前缀
+      let finalUrl = lastReportUrl.value;
+      // 如果是绝对路径，提取 pathname
+      if (finalUrl.startsWith('http')) {
+        try {
+          const urlObj = new URL(finalUrl);
+          finalUrl = urlObj.pathname + urlObj.search;
+        } catch (e) { /* ignore */ }
+      }
+      
+      // 只有当 baseURL 为 /api 且 URL 以 /api/ 开头时才剥离，避免重复
+      if (httpClient.defaults.baseURL === '/api' && finalUrl.startsWith('/api/')) {
+        finalUrl = finalUrl.substring(4);
+      }
+
+      const response = await httpClient.get(finalUrl, { responseType: 'blob' });
+      
+      // 检查是否是 JSON 错误
+      if (response.data.type === 'application/json') {
+        const text = await response.data.text();
+        const json = JSON.parse(text);
+        throw new Error(json.message || '下载失败：后端返回错误');
+      }
+
+      // 核心修复：直接使用后端返回的原始 Blob，减少中间包装导致的损坏
+      const blob = response.data;
+      
+      const downloadUrl = window.URL.createObjectURL(blob);
+      
+      // 解析文件名
+      let fileName = lastReportName.value || '分析报告.txt';
+      const disposition = response.headers['content-disposition'];
+      if (disposition && disposition.includes('filename=')) {
+        const matches = /filename="?([^";]+)"?/.exec(disposition);
+        if (matches && matches[1]) {
+          fileName = decodeURIComponent(matches[1]);
+        }
+      }
+
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      ElMessage.success('报告下载成功');
+    } catch (error: any) {
+      console.error('下载报告失败:', error);
+      ElMessage.error(error.message || '下载报告失败，请重试');
+    }
   }
 }
 </script>
@@ -561,7 +610,7 @@ function downloadLastReport() {
               <el-button class="w-full mb-2" :icon="Upload" size="small" style="color: #1A3A5C; border-color: #D0D5DD"
                 :loading="isUploading">
                 <label class="cursor-pointer">
-                  选择并上传 CSV / Excel 文件
+                  选择并上传 CSV / Excel / XLSX 文件
                   <input type="file" accept=".csv,.txt,.xlsx,.xls" class="hidden" :disabled="isUploading"
                     @change="(e) => { const input = e.target as HTMLInputElement; const f = input.files?.[0]; if (f) handleFileUpload(f, 'chat'); input.value = '' }" />
                 </label>
@@ -604,12 +653,18 @@ function downloadLastReport() {
               🚀 开始 AI 法律线索提取
             </el-button>
 
-            <div v-if="analysisDone" class="flex gap-4 mt-4">
-              <el-button type="primary" :icon="Document" class="flex-1 h-10 font-semibold"
-                style="background: #1A3A5C; border-color: #1A3A5C" @click="generateReport">
-                生成初步分析报告
-              </el-button>
-              <el-button :icon="Connection" class="flex-1 h-10 font-semibold"
+            <div v-if="analysisDone" class="flex flex-col gap-3 mt-4">
+              <div class="flex gap-4">
+                <el-button type="primary" :icon="Document" class="flex-1 h-10 font-semibold"
+                  style="background: #1A3A5C; border-color: #1A3A5C" @click="generateReport">
+                  {{ lastReportUrl ? '重新生成报告' : '生成初步分析报告' }}
+                </el-button>
+                <el-button v-if="lastReportUrl" type="success" :icon="Download" class="flex-1 h-10 font-semibold"
+                  @click="downloadLastReport">
+                  下载分析报告
+                </el-button>
+              </div>
+              <el-button :icon="Connection" class="w-full h-10 font-semibold"
                 style="color: #1A3A5C; border-color: #1A3A5C" @click="gotoRelations">
                 转入关联图谱分析
               </el-button>
@@ -659,21 +714,65 @@ function downloadLastReport() {
             <!-- 价格异常判定 -->
             <div v-if="analysisResult?.price_analysis" class="app-card p-5">
               <div class="flex items-center gap-2 mb-3">
-                <span class="text-lg">🔴</span>
+                <span class="text-lg">💰</span>
                 <h4 class="font-bold text-sm" style="color: #1A3A5C">
-                  价格异常判定
+                  价格异常判定 (金额异常识别增强)
                 </h4>
               </div>
-              <div class="p-3 rounded-lg text-sm" style="background: #FDECEA; border: 1px solid #F5C6C2">
-                <p v-if="analysisResult.price_analysis.is_anomaly">
-                  价格异常：低于正品 {{ Math.round((1 - analysisResult.price_analysis.price_ratio) * 100) }}%
-                </p>
-                <p v-else>
-                  价格正常
-                </p>
-                <p class="mt-1" style="color: #888">
+              <div class="p-4 rounded-lg text-sm" :style="{
+                background: analysisResult.price_analysis.is_anomaly ? '#FDECEA' : '#F0FDF4',
+                border: analysisResult.price_analysis.is_anomaly ? '1px solid #F5C6C2' : '1px solid #BBF7D0'
+              }">
+                <div class="flex items-center gap-2 mb-2">
+                  <span :class="analysisResult.price_analysis.is_anomaly ? 'text-red-600' : 'text-green-600'" class="font-bold text-base">
+                    {{ analysisResult.price_analysis.is_anomaly ? '发现价格异常' : '价格识别正常' }}
+                  </span>
+                  <span v-if="analysisResult.price_analysis.is_anomaly" class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs">
+                    低于正品 {{ Math.round((1 - (analysisResult.price_analysis.price_ratio || 0)) * 100) }}%
+                  </span>
+                </div>
+                <p class="text-gray-700 leading-relaxed">
                   {{ analysisResult.price_analysis.suggestion }}
                 </p>
+                <div v-if="analysisResult.price_analysis.comparison_details" class="mt-3 p-2 bg-white/50 rounded border border-gray-100 text-xs text-gray-500">
+                  <span class="font-semibold">校验细节：</span>{{ analysisResult.price_analysis.comparison_details }}
+                </div>
+              </div>
+            </div>
+
+            <!-- 跨校验服务分析 (Transaction Cross-Validation) -->
+            <div v-if="analysisResult?.cross_validation" class="app-card p-5">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-lg">🔄</span>
+                <h4 class="font-bold text-sm" style="color: #1A3A5C">
+                  证据跨校验分析
+                </h4>
+              </div>
+              <div class="p-4 rounded-lg text-sm" :style="{
+                background: analysisResult.cross_validation.is_consistent ? '#F0F9FF' : '#FFF7ED',
+                border: analysisResult.cross_validation.is_consistent ? '1px solid #BAE6FD' : '1px solid #FFEDD5'
+              }">
+                <div class="flex items-center gap-2 mb-2">
+                  <span :class="analysisResult.cross_validation.is_consistent ? 'text-blue-600' : 'text-orange-600'" class="font-bold">
+                    {{ analysisResult.cross_validation.is_consistent ? '数据一致性校验通过' : '检测到数据不一致' }}
+                  </span>
+                </div>
+                <p class="text-gray-700 mb-3">{{ analysisResult.cross_validation.description }}</p>
+                
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                  <div class="p-2 rounded bg-white/60 border border-gray-100">
+                    <div class="text-gray-400 mb-1">来源 A</div>
+                    <div class="font-medium text-gray-800">{{ analysisResult.cross_validation.source_a }}</div>
+                  </div>
+                  <div class="p-2 rounded bg-white/60 border border-gray-100">
+                    <div class="text-gray-400 mb-1">来源 B</div>
+                    <div class="font-medium text-gray-800">{{ analysisResult.cross_validation.source_b }}</div>
+                  </div>
+                </div>
+
+                <div v-if="analysisResult.cross_validation.details" class="mt-3 text-xs text-gray-500 italic">
+                  * {{ analysisResult.cross_validation.details }}
+                </div>
               </div>
             </div>
 

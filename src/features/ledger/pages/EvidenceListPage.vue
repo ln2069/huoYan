@@ -166,7 +166,7 @@ onMounted(() => {
         <div class="flex gap-2">
           <el-checkbox v-model="isMasked" label="脱敏显示" border size="small" class="mr-2" />
           <el-button size="small" :icon="Download" style="color: #1A3A5C; border-color: #D0D5DD" class="!rounded-md"
-            @click="handleExport">导出 Excel</el-button>
+            @click="handleExport">导出 CSV</el-button>
         </div>
       </div>
 

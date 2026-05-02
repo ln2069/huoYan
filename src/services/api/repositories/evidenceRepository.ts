@@ -37,5 +37,9 @@ export function createApiEvidenceRepository(): EvidenceRepository {
     async importEvidence(req) {
       return post("/evidence/import", req);
     },
+    async downloadTemplate(url: string) {
+      const response = await httpClient.get(url, { responseType: 'blob' });
+      return response;
+    }
   };
 }
