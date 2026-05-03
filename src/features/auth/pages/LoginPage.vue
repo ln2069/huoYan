@@ -3,15 +3,12 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { User, Lock, Connection } from '@element-plus/icons-vue';
-
 import axios from 'axios';
+import { saveJwtSession, saveBasicSession, saveUserInfo } from '@/services/auth/authService';
 
 const router = useRouter();
 const loading = ref(false);
-const loginForm = ref({
-  username: '',
-  password: ''
-});
+const loginForm = ref({ username: '', password: '' });
 
 const handleLogin = async () => {
   if (!loginForm.value.username || !loginForm.value.password) {
@@ -20,25 +17,42 @@ const handleLogin = async () => {
   }
 
   loading.value = true;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+
   try {
-    // 对接后端：必须请求一个“非白名单”接口（如 /cases）才能触发后端的 Basic Auth 校验
-    const authHeader = 'Basic ' + btoa(`${loginForm.value.username}:${loginForm.value.password}`);
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
-    
-    await axios.get(`${apiBase}/cases?limit=1`, {
-      headers: { 'Authorization': authHeader }
+    // 调用后端 JWT 登录接口
+    // 后端直接返回 { access_token, token_type, expires_in }（无 code/data 包装层）
+    const res = await axios.post(`${apiBase}/auth/login`, {
+      username: loginForm.value.username,
+      password: loginForm.value.password,
     });
 
-    // 请求成功，说明账号密码正确
-    localStorage.setItem('basic_auth_username', loginForm.value.username);
-    localStorage.setItem('basic_auth_password', loginForm.value.password);
-    localStorage.setItem('user_info', JSON.stringify({ name: '检察官 李明', role: '高级分析员' }));
-    
+    const { access_token, expires_in } = res.data;
+    if (!access_token) throw new Error('no_token');
+
+    saveJwtSession(access_token, expires_in ?? 28800);
+    saveUserInfo({ name: '检察官 李明', role: '高级分析员' });
     ElMessage.success('登录成功，欢迎回来');
     router.push('/dashboard');
   } catch (error: any) {
     if (error.response?.status === 401) {
       ElMessage.error('账号或密码错误，请检查后重试');
+    } else if (error.response?.status === 404 || error.message === 'no_token') {
+      // 后端未部署 JWT 接口时，降级为 Basic Auth 验证
+      try {
+        const authHeader = 'Basic ' + btoa(`${loginForm.value.username}:${loginForm.value.password}`);
+        await axios.get(`${apiBase}/cases?limit=1`, { headers: { Authorization: authHeader } });
+        saveBasicSession(loginForm.value.username, loginForm.value.password);
+        saveUserInfo({ name: '检察官 李明', role: '高级分析员' });
+        ElMessage.success('登录成功，欢迎回来');
+        router.push('/dashboard');
+      } catch (fallbackErr: any) {
+        if (fallbackErr.response?.status === 401) {
+          ElMessage.error('账号或密码错误，请检查后重试');
+        } else {
+          ElMessage.error('无法连接至分析后端，请检查服务器状态');
+        }
+      }
     } else {
       ElMessage.error('无法连接至分析后端，请检查服务器状态');
       console.error('Login Error:', error);
@@ -100,7 +114,7 @@ const handleLogin = async () => {
         </el-button>
 
         <div class="login-footer">
-          <span class="secure-tag">🔒 安全加密通道已开启</span>
+          <span class="secure-tag">🔒 JWT 加密通道已开启</span>
         </div>
       </div>
     </div>
@@ -124,7 +138,6 @@ const handleLogin = async () => {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* 背景装饰 */
 .bg-decoration {
   position: absolute;
   top: 0;
@@ -176,7 +189,6 @@ const handleLogin = async () => {
   to { transform: translate(50px, 50px); }
 }
 
-/* 登录卡片 */
 .login-card {
   position: relative;
   z-index: 10;

@@ -63,11 +63,6 @@ const routes: RouteRecordRaw[] = [
         component: { render: () => null },
       },
       {
-        path: "report",
-        name: "ledger-report",
-        component: { render: () => null },
-      },
-      {
         path: "evidence",
         name: "ledger-evidence",
         component: () => import("@/features/ledger/pages/EvidenceListPage.vue"),
@@ -82,22 +77,24 @@ export const router = createRouter({
   scrollBehavior: () => ({ left: 0, top: 0 }),
 });
 
-// 全局路由守卫：实现坚固的鉴权逻辑
+// 全局路由守卫：以 authService 为唯一鉴权判断入口
+import { isLoggedIn } from "@/services/auth/authService";
+
 router.beforeEach((to, _from, next) => {
-  const isLogged = !!localStorage.getItem('basic_auth_username');
-  
-  // 1. 如果是公共页面（如登录页），且已登录，直接跳转主页
-  if (to.meta.public && isLogged) {
+  const logged = isLoggedIn();
+
+  // 1. 已登录用户访问公共页面（登录页）→ 跳转主页
+  if (to.meta.public && logged) {
     next('/dashboard');
     return;
   }
 
-  // 2. 如果不是公共页面，且未登录，强制重定向至登录页
-  if (!to.meta.public && !isLogged) {
+  // 2. 未登录用户访问受保护页面 → 强制跳转登录页
+  if (!to.meta.public && !logged) {
     next('/login');
     return;
   }
 
-  // 3. 其他情况正常通行
   next();
 });
+

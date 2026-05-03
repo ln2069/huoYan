@@ -32,6 +32,11 @@ watch(
 const caseOptions = ref<any[]>([]);
 const showTemplateDialog = ref(false);
 
+// 上传后从后端拉取的结构化案件详情
+const caseDetail = ref<any>(null);
+// 最近一次上传识别到的数据类型
+const detectedDataType = ref<'transactions' | 'communications' | 'logistics' | null>(null);
+
 type EvidenceTabKey = "general";
 
 type AnalysisState = {
@@ -214,73 +219,13 @@ const uploadFormatDetected = computed(() => currentUploadState.value.formatDetec
 const uploadExtractedTxns = computed(() => currentUploadState.value.extractedTransactions);
 const currentTemplateHint = computed(() => templateHintsMap[evidenceTab.value]);
 
+// 直接使用后端 key_actors 原始数组，不做任何前端押居
 const normalizedKeyActors = computed(() => {
   const result = analysisResult.value as any;
-  const directActors = Array.isArray(result?.key_actors) ? result.key_actors : [];
-  if (directActors.length > 0) {
-    return directActors.map((actor: any) => ({
-      name: actor?.name || actor?.person || actor?.id || "未知主体",
-      role: actor?.role || actor?.behavior_role || actor?.mentioned_in || "",
-      contact: actor?.contact || actor?.phone || "",
-      mentionedIn: actor?.mentioned_in || actor?.evidence_type || "",
-    }));
-  }
-
-  const entities = Array.isArray(result?.key_entities?.entities) ? result.key_entities.entities : [];
-  if (entities.length > 0) {
-    return entities.map((entity: any) => ({
-      name: entity?.name || "未知主体",
-      role: entity?.role || "",
-      contact: entity?.phone || entity?.bankAccount || "",
-      mentionedIn: entity?.mentioned_in || "",
-    }));
-  }
-
-  const names = Array.isArray(result?.key_entities?.names) ? result.key_entities.names : [];
-  const roles = Array.isArray(result?.key_entities?.roles) ? result.key_entities.roles : [];
-  const contacts = Array.isArray(result?.key_entities?.contacts) ? result.key_entities.contacts : [];
-  const maxLen = Math.max(names.length, roles.length, contacts.length);
-  if (maxLen === 0) {
-    return [];
-  }
-
-  return Array.from({ length: maxLen }, (_, i) => ({
-    name: names[i] ? String(names[i]) : "未知主体",
-    role: roles[i] ? String(roles[i]) : "",
-    contact: contacts[i] ? String(contacts[i]) : "",
-    mentionedIn: "",
-  }));
+  return Array.isArray(result?.key_actors) ? result.key_actors : [];
 });
 
-const txnStats = computed(() => {
-  const result = (analysisResult.value as any)?.transaction_analysis || (analysisResult.value as any);
-  return {
-    totalAmount: result.total_amount || result.totalAmount || 0,
-    count: result.transaction_count || result.transactionCount || 0,
-    persons: result.person_count || result.personCount || 0,
-    topCounterparties: result.top_counterparties || result.topCounterparties || []
-  };
-});
 
-const logStats = computed(() => {
-  const result = (analysisResult.value as any)?.logistics_analysis || (analysisResult.value as any);
-  return {
-    total: result.total_shipments || result.totalShipments || 0,
-    companies: result.express_count || result.expressCount || 0,
-    persons: result.person_count || result.personCount || 0,
-    suspicious: result.suspicious_shipments || result.suspiciousShipments || []
-  };
-});
-
-const normalizedTransactions = computed(() => {
-  const res = analysisResult.value as any;
-  return res?.transaction_analysis?.records || res?.transactions || [];
-});
-
-const normalizedLogistics = computed(() => {
-  const res = analysisResult.value as any;
-  return res?.logistics_analysis?.records || res?.logistics || [];
-});
 
 // 智能分析接口调用
 async function startAnalysis() {
@@ -307,31 +252,25 @@ async function startAnalysis() {
       case_id: selectedCaseId.value || undefined
     });
 
+    // 直接存储后端原始返回数据，不做任何前端合成
+    // 字段映射：后端返回 price_anomaly.has_anomaly / .ratio，直接透传展示
     const rawData = res.data || res;
+    const pa = rawData.price_anomaly || rawData.price_analysis || null;
+    const sk = rawData.subjective_knowledge || null;
 
-    // 统一字段映射适配
     const data = {
-      ...rawData,
-      price_analysis: rawData.price_analysis || (rawData.price_anomaly ? {
-        is_anomaly: rawData.price_anomaly.is_anomaly,
-        price_ratio: rawData.price_anomaly.price_ratio,
-        suggestion: rawData.price_anomaly.suggestion,
-        comparison_details: rawData.price_anomaly.comparison_details
-      } : null),
-      cross_validation: rawData.cross_validation || null,
-      subjective_knowledge: rawData.subjective_knowledge ? {
-        ...rawData.subjective_knowledge,
-        category_counts: rawData.subjective_knowledge.categories || rawData.subjective_knowledge.category_counts || {}
+      // 价格异常：使用后端原始字段（has_anomaly/ratio），模板层展示时直接读底层字段
+      price_anomaly: pa,
+      // 主观明知：只做 category 字段归一（后端同时返回 categories 和 category_counts 两个名称）
+      subjective_knowledge: sk ? {
+        ...sk,
+        category_counts: sk.categories ?? sk.category_counts ?? {}
       } : null,
-      key_entities: rawData.key_entities || (rawData.key_actors ? {
-        names: rawData.key_actors.map((a: any) => a.name),
-        roles: rawData.key_actors.map((a: any) => a.role),
-        contacts: [],
-        amounts: []
-      } : { names: [], roles: [], contacts: [], amounts: [] }),
-      crime_type: rawData.crime_type || rawData.subjective_knowledge?.crime_type,
-      transactions: rawData.transactions || [],
-      logistics: rawData.logistics || []
+      // key_actors 直接传递
+      key_actors: rawData.key_actors || [],
+      // 润召罪名：优先使用子弹中的 crime_type
+      crime_type: rawData.crime_type || sk?.crime_type || null,
+      cross_validation: rawData.cross_validation || null,
     };
 
     analysisResult.value = data;
@@ -424,11 +363,21 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     tabUiState[tab].upload.formatDetected = response.format_detected || null;
     tabUiState[tab].upload.extractedTransactions = response.extracted_transactions || 0;
 
+    // 通讯记录：把文本送去 AI 分析（关键词匹配最有效）
     if (evidenceType === "chat") {
       store.rawText = fileText;
+      await startAnalysis();
+    } else {
+      // 资金流水 / 物流记录：上传后从数据库拉取结构化数据展示，AI 分析文本意义不大
+      store.rawText = fileText;
+      await startAnalysis(); // 仍做一次文本分析（提取主观明知）
     }
 
-    await startAnalysis();
+    // 无论何种类型，上传后都拉取最新案件详情（结构化表格数据）
+    if (caseId) {
+      await loadCaseDetail(caseId);
+    }
+    detectedDataType.value = (response.data_type as any) || null;
     await loadCases();
 
     const inferenceParts = [
@@ -440,9 +389,13 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     const wechatExtra = response.format_detected === 'wechat' && response.extracted_transactions
       ? `，自动提取 ${response.extracted_transactions} 条转账记录` : "";
 
-    if (evidenceType === "general") {
-      ElMessage.success(`证据数据「${file.name}」上传成功，入库 ${response.saved_records}/${response.total_records} 条${wechatExtra}${inferenceText}`);
-    }
+    const dataTypeLabel: Record<string, string> = {
+      transactions: '资金流水',
+      communications: '通讯记录',
+      logistics: '物流记录',
+    };
+    const detectedLabel = response.data_type ? `（${dataTypeLabel[response.data_type] ?? response.data_type}）` : '';
+    ElMessage.success(`证据数据「${file.name}」${detectedLabel}上传成功，入库 ${response.saved_records}/${response.total_records} 条${wechatExtra}${inferenceText}`);
   } catch (error) {
     // 表格格式校验错误 — 专项友好提示
     if (error instanceof TableFormatError) {
@@ -473,7 +426,40 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
   return false;
 }
 
+// 上传成功后拉取案件结构化详情（资金流水/通讯记录/物流记录）
+async function loadCaseDetail(caseId: string) {
+  try {
+    const res = await repositories.cases.getCaseDetail(caseId);
+    const detail = (res as any)?.data || res;
+    caseDetail.value = detail;
+  } catch (e) {
+    console.warn('拉取案件详情失败:', e);
+  }
+}
+
+const caseTransactions = computed(() =>
+  (caseDetail.value?.transactions || []).map((t: any) => ({
+    id: t.id, time: t.transaction_time, payer: t.payer, payee: t.payee,
+    amount: t.amount, method: t.payment_method, remark: t.remark,
+  }))
+);
+const caseCommunications = computed(() =>
+  (caseDetail.value?.communications || []).map((c: any) => ({
+    id: c.id, time: c.communication_time, initiator: c.initiator,
+    receiver: c.receiver, content: c.content, mediaType: c.media_type, isDeleted: c.is_deleted,
+  }))
+);
+const caseLogistics = computed(() =>
+  (caseDetail.value?.logistics || []).map((l: any) => ({
+    id: l.id, time: l.shipping_time, trackingNo: l.tracking_no, sender: l.sender,
+    senderAddr: l.sender_address, receiver: l.receiver,
+    receiverAddr: l.receiver_address, description: l.description, weight: l.weight,
+  }))
+);
+const caseStats = computed(() => caseDetail.value?.statistics || null);
+
 // 生成分析报告
+
 async function generateReport() {
   const loading = ElLoading.service({ fullscreen: true, text: '正在生成初步分析报告...' });
 
@@ -683,7 +669,7 @@ async function downloadLastReport() {
           </div>
 
           <div v-else class="space-y-4">
-            <div v-if="analysisResult?.subjective_knowledge?.score > 5 || analysisResult?.price_analysis?.is_anomaly"
+            <div v-if="analysisResult?.subjective_knowledge?.score > 5 || analysisResult?.price_anomaly?.has_anomaly"
               class="app-card p-4" style="border: 1px solid #F5C6C2; background: #FDECEA">
               <div class="font-semibold" style="color: #C0392B">
                 🔴 检测到高风险疑似侵权特征
@@ -712,30 +698,39 @@ async function downloadLastReport() {
             </div>
 
             <!-- 价格异常判定 -->
-            <div v-if="analysisResult?.price_analysis" class="app-card p-5">
+            <div v-if="analysisResult?.price_anomaly" class="app-card p-5">
               <div class="flex items-center gap-2 mb-3">
                 <span class="text-lg">💰</span>
-                <h4 class="font-bold text-sm" style="color: #1A3A5C">
-                  价格异常判定 (金额异常识别增强)
-                </h4>
+                <h4 class="font-bold text-sm" style="color: #1A3A5C">价格异常判定</h4>
               </div>
               <div class="p-4 rounded-lg text-sm" :style="{
-                background: analysisResult.price_analysis.is_anomaly ? '#FDECEA' : '#F0FDF4',
-                border: analysisResult.price_analysis.is_anomaly ? '1px solid #F5C6C2' : '1px solid #BBF7D0'
+                background: analysisResult.price_anomaly.has_anomaly ? '#FDECEA' : '#F0FDF4',
+                border: analysisResult.price_anomaly.has_anomaly ? '1px solid #F5C6C2' : '1px solid #BBF7D0'
               }">
                 <div class="flex items-center gap-2 mb-2">
-                  <span :class="analysisResult.price_analysis.is_anomaly ? 'text-red-600' : 'text-green-600'" class="font-bold text-base">
-                    {{ analysisResult.price_analysis.is_anomaly ? '发现价格异常' : '价格识别正常' }}
+                  <span :class="analysisResult.price_anomaly.has_anomaly ? 'text-red-600' : 'text-green-600'" class="font-bold text-base">
+                    {{ analysisResult.price_anomaly.has_anomaly ? '发现价格异常' : '价格识别正常' }}
                   </span>
-                  <span v-if="analysisResult.price_analysis.is_anomaly" class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs">
-                    低于正品 {{ Math.round((1 - (analysisResult.price_analysis.price_ratio || 0)) * 100) }}%
+                  <span v-if="analysisResult.price_anomaly.anomaly_level" class="px-2 py-0.5 rounded-full text-xs"
+                    :class="analysisResult.price_anomaly.anomaly_level === '严重' ? 'bg-red-100 text-red-700' : analysisResult.price_anomaly.anomaly_level === '中等' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'">
+                    {{ analysisResult.price_anomaly.anomaly_level }}
                   </span>
                 </div>
-                <p class="text-gray-700 leading-relaxed">
-                  {{ analysisResult.price_analysis.suggestion }}
-                </p>
-                <div v-if="analysisResult.price_analysis.comparison_details" class="mt-3 p-2 bg-white/50 rounded border border-gray-100 text-xs text-gray-500">
-                  <span class="font-semibold">校验细节：</span>{{ analysisResult.price_analysis.comparison_details }}
+                <div class="grid grid-cols-3 gap-3 text-xs mt-3">
+                  <div class="p-2 rounded bg-white/60 border border-gray-100">
+                    <div class="text-gray-400 mb-1">报价</div>
+                    <div class="font-bold text-gray-800">¥{{ analysisResult.price_anomaly.quoted_price ?? '—' }}</div>
+                  </div>
+                  <div class="p-2 rounded bg-white/60 border border-gray-100">
+                    <div class="text-gray-400 mb-1">参考正品价</div>
+                    <div class="font-bold text-gray-800">¥{{ analysisResult.price_anomaly.reference_price != null ? Number(analysisResult.price_anomaly.reference_price).toFixed(2) : '—' }}</div>
+                  </div>
+                  <div class="p-2 rounded bg-white/60 border border-gray-100">
+                    <div class="text-gray-400 mb-1">比值</div>
+                    <div class="font-bold" :class="analysisResult.price_anomaly.has_anomaly ? 'text-red-600' : 'text-green-700'">
+                      {{ analysisResult.price_anomaly.ratio != null ? (analysisResult.price_anomaly.ratio * 100).toFixed(1) + '%' : '—' }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -818,23 +813,14 @@ async function downloadLastReport() {
                 <h4 class="font-bold text-sm" style="color: #1A3A5C">关键信息主体</h4>
               </div>
               <div class="space-y-2">
-                <div v-for="actor in normalizedKeyActors"
-                  :key="`${actor.name}-${actor.role}-${actor.contact}-${actor.mentionedIn}`"
+                <div v-for="actor in normalizedKeyActors" :key="actor.name"
                   class="p-3 rounded bg-gray-50 border border-gray-100">
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">
-                      {{ actor.name }}
-                    </span>
-                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                      {{ actor.role }}
-                    </span>
-                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                      {{ actor.contact }}
-                    </span>
+                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">{{ actor.name }}</span>
+                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">{{ actor.role }}</span>
+                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">{{ actor.contact }}</span>
                   </div>
-                  <div v-if="actor.mentionedIn" class="text-[11px] mt-2 text-gray-500">
-                    出现于：{{ actor.mentionedIn }}
-                  </div>
+                  <div v-if="actor.mentioned_in" class="text-[11px] mt-2 text-gray-500">出现于：{{ actor.mentioned_in }}</div>
                 </div>
               </div>
             </div>
@@ -850,70 +836,64 @@ async function downloadLastReport() {
               </div>
             </div>
 
-            <!-- 资金流水分析 -->
-            <div v-if="normalizedTransactions.length > 0 || txnStats.count > 0" class="app-card p-5">
+            <!-- 入库统计概览 -->
+            <div v-if="caseStats" class="app-card p-5">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-lg">📊</span>
+                <h4 class="font-bold text-sm" style="color: #1A3A5C">案件证据入库统计</h4>
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-100 text-center">
+                  <div class="text-xl font-black text-blue-700">{{ caseStats.transaction_count }}</div>
+                  <div class="text-[10px] text-gray-500 mt-1">💰 资金流水</div>
+                </div>
+                <div class="p-3 rounded-lg bg-green-50 border border-green-100 text-center">
+                  <div class="text-xl font-black text-green-700">{{ caseStats.communication_count }}</div>
+                  <div class="text-[10px] text-gray-500 mt-1">💬 通讯记录</div>
+                </div>
+                <div class="p-3 rounded-lg bg-orange-50 border border-orange-100 text-center">
+                  <div class="text-xl font-black text-orange-700">{{ caseStats.logistics_count }}</div>
+                  <div class="text-[10px] text-gray-500 mt-1">📦 物流记录</div>
+                </div>
+              </div>
+              <div class="mt-3 p-3 rounded-lg bg-red-50 border border-red-100 flex justify-between items-center">
+                <span class="text-xs text-gray-600">💹 涉案流水总额</span>
+                <span class="font-black text-red-600 text-base">¥{{ Number(caseStats.total_transaction_amount || 0).toLocaleString() }}</span>
+              </div>
+            </div>
+
+
+
+            <!-- 资金流水入库记录 -->
+            <div v-if="caseTransactions.length > 0" class="app-card p-5">
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
                   <span class="text-xl">💰</span>
-                  <h4 class="font-bold text-sm" style="color: #1A3A5C">资金流水线索分析</h4>
+                  <h4 class="font-bold text-sm" style="color: #1A3A5C">资金流水入库记录</h4>
                 </div>
                 <div class="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
-                  发现 {{ txnStats.count }} 笔记录
+                  共 {{ caseTransactions.length }} 笔
                 </div>
               </div>
-
-              <!-- 资金统计卡片 -->
-              <div class="grid grid-cols-3 gap-3 mb-4">
-                <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div class="text-[10px] text-gray-500 mb-1">流水总计</div>
-                  <div class="text-base font-bold text-blue-900">¥{{ txnStats.totalAmount?.toLocaleString() }}</div>
-                </div>
-                <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div class="text-[10px] text-gray-500 mb-1">分析笔数</div>
-                  <div class="text-base font-bold text-blue-900">{{ txnStats.count }} 笔</div>
-                </div>
-                <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div class="text-[10px] text-gray-500 mb-1">涉及主体</div>
-                  <div class="text-base font-bold text-blue-900">{{ txnStats.persons }} 人</div>
-                </div>
-              </div>
-
-              <!-- 关键对手方 -->
-              <div v-if="txnStats.topCounterparties.length > 0" class="mb-4">
-                <div class="text-xs font-semibold text-gray-600 mb-2">主要对手方分布：</div>
-                <div class="space-y-2">
-                  <div v-for="(cp, idx) in txnStats.topCounterparties" :key="idx" class="relative pt-1">
-                    <div class="flex items-center justify-between text-[11px] mb-1">
-                      <span class="font-medium text-gray-700">{{ cp.name }}</span>
-                      <span class="text-blue-600 font-mono">¥{{ cp.amount?.toLocaleString() }} ({{ cp.percent }}%)</span>
-                    </div>
-                    <div class="overflow-hidden h-1 text-xs flex rounded bg-blue-100">
-                      <div :style="`width: ${cp.percent}%`" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 流水列表 -->
               <div class="max-h-[300px] overflow-y-auto rounded-lg border border-gray-100">
                 <table class="w-full text-[11px]">
                   <thead class="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                      <th class="px-2 py-2 text-left font-semibold text-gray-600">对手方</th>
-                      <th class="px-2 py-2 text-right font-semibold text-gray-600">金额</th>
                       <th class="px-2 py-2 text-left font-semibold text-gray-600">时间</th>
+                      <th class="px-2 py-2 text-left font-semibold text-gray-600">付款方</th>
+                      <th class="px-2 py-2 text-left font-semibold text-gray-600">收款方</th>
+                      <th class="px-2 py-2 text-right font-semibold text-gray-600">金额</th>
                       <th class="px-2 py-2 text-left font-semibold text-gray-600">渠道</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-50">
-                    <tr v-for="(txn, idx) in normalizedTransactions" :key="idx" class="hover:bg-blue-50/30 transition-colors">
-                      <td class="px-2 py-2 text-gray-700 font-medium">{{ txn.payee === '曹某某' ? txn.payer : txn.payee }}</td>
-                      <td class="px-2 py-2 text-right font-mono" :class="txn.payee === '曹某某' ? 'text-green-600' : 'text-red-600'">
-                        {{ txn.payee === '曹某某' ? '+' : '-' }}¥{{ txn.amount?.toLocaleString() }}
-                      </td>
-                      <td class="px-2 py-2 text-gray-500">{{ txn.time }}</td>
+                    <tr v-for="txn in caseTransactions" :key="txn.id" class="hover:bg-blue-50/30 transition-colors">
+                      <td class="px-2 py-2 text-gray-400">{{ txn.time?.slice(0, 16) }}</td>
+                      <td class="px-2 py-2 font-medium text-gray-700">{{ txn.payer }}</td>
+                      <td class="px-2 py-2 font-medium text-gray-700">{{ txn.payee }}</td>
+                      <td class="px-2 py-2 text-right font-mono font-bold text-red-600">¥{{ Number(txn.amount).toLocaleString() }}</td>
                       <td class="px-2 py-2">
-                        <span class="px-1.5 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600">{{ txn.channel }}</span>
+                        <span class="px-1.5 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600">{{ txn.method || '-' }}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -921,75 +901,75 @@ async function downloadLastReport() {
               </div>
             </div>
 
-            <!-- 物流分析 -->
-            <div v-if="normalizedLogistics.length > 0 || logStats.total > 0" class="app-card p-5">
+            <!-- 通讯记录入库记录 -->
+            <div v-if="caseCommunications.length > 0" class="app-card p-5">
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
-                  <span class="text-xl">📦</span>
-                  <h4 class="font-bold text-sm" style="color: #1A3A5C">物流发货线索分析</h4>
+                  <span class="text-xl">💬</span>
+                  <h4 class="font-bold text-sm" style="color: #1A3A5C">通讯记录入库记录</h4>
                 </div>
-                <div class="text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-100">
-                  追踪 {{ logStats.total }} 个单号
-                </div>
-              </div>
-
-              <!-- 物流统计卡片 -->
-              <div class="grid grid-cols-3 gap-3 mb-4">
-                <div class="p-3 rounded-lg bg-orange-50/30 border border-orange-100">
-                  <div class="text-[10px] text-gray-500 mb-1">发货总数</div>
-                  <div class="text-base font-bold text-orange-900">{{ logStats.total }} 单</div>
-                </div>
-                <div class="p-3 rounded-lg bg-orange-50/30 border border-orange-100">
-                  <div class="text-[10px] text-gray-500 mb-1">快递公司</div>
-                  <div class="text-base font-bold text-orange-900">{{ logStats.companies }} 家</div>
-                </div>
-                <div class="p-3 rounded-lg bg-orange-50/30 border border-orange-100">
-                  <div class="text-[10px] text-gray-500 mb-1">关联节点</div>
-                  <div class="text-base font-bold text-orange-900">{{ logStats.persons }} 个</div>
+                <div class="text-[10px] px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-100">
+                  共 {{ caseCommunications.length }} 条
                 </div>
               </div>
-
-              <!-- 异常件提示 -->
-              <div v-if="logStats.suspicious.length > 0" class="mb-4">
-                <div class="flex items-center gap-1 text-[11px] font-bold text-red-600 mb-2">
-                  <span>⚠️ 检测到 {{ logStats.suspicious.length }} 笔可疑发货：</span>
-                </div>
-                <div class="space-y-2">
-                  <div v-for="(s, idx) in logStats.suspicious" :key="idx" class="p-2 rounded border border-red-100 bg-red-50/50 text-[11px]">
-                    <div class="flex justify-between mb-1">
-                      <span class="font-bold">{{ s.expressNo }}</span>
-                      <span class="text-red-700 font-semibold">{{ s.reason }}</span>
-                    </div>
-                    <div class="text-gray-600">{{ s.sender }} ➔ {{ s.receiver }}</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 物流记录详情 -->
               <div class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                <div v-for="(log, idx) in normalizedLogistics" :key="idx"
-                  class="p-3 rounded-lg bg-white border border-gray-100 text-[11px] hover:shadow-sm transition-shadow">
-                  <div class="flex justify-between items-center mb-2">
+                <div v-for="msg in caseCommunications" :key="msg.id"
+                  class="p-3 rounded-lg border text-[11px] transition-colors"
+                  :class="msg.isDeleted ? 'bg-red-50 border-red-100' : 'bg-white border-gray-100 hover:bg-gray-50'">
+                  <div class="flex justify-between items-center mb-1">
                     <div class="flex items-center gap-2">
-                      <span class="font-bold text-blue-900">{{ log.express_no || log.expressNo }}</span>
-                      <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ log.channel || '物流' }}</span>
+                      <span class="font-bold text-blue-800">{{ msg.initiator }}</span>
+                      <span class="text-gray-300">→</span>
+                      <span class="font-medium text-gray-600">{{ msg.receiver }}</span>
+                      <span v-if="msg.isDeleted" class="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[10px]">已删除</span>
                     </div>
-                    <span class="text-gray-400">{{ log.time }}</span>
+                    <span class="text-gray-400">{{ msg.time?.slice(0, 16) }}</span>
                   </div>
-                  <div class="flex items-center gap-3">
-                    <div class="flex-1">
-                      <div class="text-gray-400 mb-0.5">发货人</div>
-                      <div class="font-medium">{{ log.sender }}</div>
-                    </div>
-                    <div class="text-gray-200">➔</div>
-                    <div class="flex-1 text-right">
-                      <div class="text-gray-400 mb-0.5">收货人</div>
-                      <div class="font-medium">{{ log.receiver }}</div>
-                    </div>
-                  </div>
+                  <div class="text-gray-700 mt-1 leading-relaxed" v-if="msg.content">{{ msg.content }}</div>
                 </div>
               </div>
             </div>
+
+            <!-- 物流记录入库记录 -->
+            <div v-if="caseLogistics.length > 0" class="app-card p-5">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <span class="text-xl">📦</span>
+                  <h4 class="font-bold text-sm" style="color: #1A3A5C">物流记录入库记录</h4>
+                </div>
+                <div class="text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-100">
+                  共 {{ caseLogistics.length }} 单
+                </div>
+              </div>
+              <div class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                <div v-for="log in caseLogistics" :key="log.id"
+                  class="p-3 rounded-lg bg-white border border-gray-100 text-[11px] hover:shadow-sm transition-shadow">
+                  <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-2">
+                      <span class="font-bold text-orange-800">{{ log.trackingNo || '单号未录入' }}</span>
+                      <span v-if="log.description" class="px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">{{ log.description }}</span>
+                    </div>
+                    <span class="text-gray-400">{{ log.time?.slice(0, 10) }}</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1">
+                      <div class="text-gray-400 mb-0.5">发件人</div>
+                      <div class="font-medium">{{ log.sender }}</div>
+                      <div v-if="log.senderAddr" class="text-gray-400 text-[10px] mt-0.5">{{ log.senderAddr }}</div>
+                    </div>
+                    <div class="text-gray-300">➡</div>
+                    <div class="flex-1 text-right">
+                      <div class="text-gray-400 mb-0.5">收件人</div>
+                      <div class="font-medium">{{ log.receiver }}</div>
+                      <div v-if="log.receiverAddr" class="text-gray-400 text-[10px] mt-0.5">{{ log.receiverAddr }}</div>
+                    </div>
+                  </div>
+                  <div v-if="log.weight" class="mt-2 text-gray-400">重量: {{ log.weight }} 公斤</div>
+                </div>
+              </div>
+            </div>
+
+
 
             <div v-if="analysisError" class="app-card p-4">
               <el-alert type="error" :title="analysisError" :closable="false" show-icon />

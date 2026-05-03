@@ -5,9 +5,10 @@ import { ElButton, ElTable, ElTableColumn, ElInput, ElSelect, ElOption, ElMessag
 import { Document, Download, Search } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
 import { maskName } from "@/utils/masking";
+import { getAuthHeader } from "@/services/auth/authService";
 
 const route = useRoute();
-const ledgerTab = ref<"fund" | "person" | "report" | "evidence">("person");
+const ledgerTab = ref<"fund" | "person" | "evidence">("person");
 
 // 监听路由变化，自动切换 tab
 watch(
@@ -19,8 +20,6 @@ watch(
       ledgerTab.value = "fund";
     } else if (newPath.includes("/ledger/evidence")) {
       ledgerTab.value = "evidence";
-    } else if (newPath.includes("/ledger/report")) {
-      ledgerTab.value = "report";
     }
   },
   { immediate: true }
@@ -221,9 +220,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
     let requestUrl = `${baseUrl}/export/csv?type=${type}`;
 
-    const username = localStorage.getItem("basic_auth_username");
-    const password = localStorage.getItem("basic_auth_password");
-    const authHeader = username && password ? `Basic ${btoa(`${username}:${password}`)}` : null;
+    const authHeader = getAuthHeader();
 
     if (type === 'transactions' && fundFilter.value.case_no) {
       requestUrl += `&case_no=${encodeURIComponent(fundFilter.value.case_no)}`;
@@ -467,33 +464,7 @@ async function exportExcel(type: 'persons' | 'transactions') {
       </div>
     </div>
 
-    <div v-show="ledgerTab === 'report'">
-      <div class="app-card p-10 flex flex-col items-center justify-center" style="min-height: 500px">
-        <el-icon :size="80" style="color: #D0D5DD">
-          <Document />
-        </el-icon>
-        <h3 class="text-xl font-bold mt-8 mb-3 text-[#1A3A5C]">📊 统计报表</h3>
-        <p class="text-base mb-2 text-gray-600">资金汇总、案件统计、证据分析报表</p>
-        <p class="text-sm mb-8 text-gray-400">将在 P1 接入数据服务后启用，数据将自动汇总计算</p>
-        <div class="grid grid-cols-3 gap-6 w-full max-w-2xl">
-          <div class="app-card p-5 text-center">
-            <p class="text-3xl mb-2">📁</p>
-            <p class="font-bold text-[#1A3A5C]">案件统计报表</p>
-            <p class="text-xs mt-1 text-gray-400">按状态/品牌/金额分布</p>
-          </div>
-          <div class="app-card p-5 text-center">
-            <p class="text-3xl mb-2">💰</p>
-            <p class="font-bold text-[#1A3A5C]">资金分析报表</p>
-            <p class="text-xs mt-1 text-gray-400">按时间/渠道/对手汇总</p>
-          </div>
-          <div class="app-card p-5 text-center">
-            <p class="text-3xl mb-2">📄</p>
-            <p class="font-bold text-[#1A3A5C]">证据分析报表</p>
-            <p class="text-xs mt-1 text-gray-400">按类型/来源/状态统计</p>
-          </div>
-        </div>
-      </div>
-    </div>
+
 
 
     <div v-if="ledgerTab === 'evidence'">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
+import { isLoggedIn, saveBasicSession } from "@/services/auth/authService";
 
 const visible = ref(false);
 const username = ref("");
@@ -8,9 +9,7 @@ const password = ref("");
 const loading = ref(false);
 
 function checkCredentials() {
-  const u = localStorage.getItem("basic_auth_username");
-  const p = localStorage.getItem("basic_auth_password");
-  if (!u || !p) {
+  if (!isLoggedIn()) {
     visible.value = true;
   }
 }
@@ -35,12 +34,10 @@ function handleSubmit() {
     return;
   }
   loading.value = true;
-  localStorage.setItem("basic_auth_username", username.value.trim());
-  localStorage.setItem("basic_auth_password", password.value.trim());
+  saveBasicSession(username.value.trim(), password.value.trim());
   visible.value = false;
   loading.value = false;
   ElMessage.success("认证信息已保存");
-  // 刷新当前页面，让所有请求带上新凭据
   window.location.reload();
 }
 </script>

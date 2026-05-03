@@ -10,7 +10,7 @@ export interface AnalyzeChatRequest {
 
 export type AnalyzeChatResponse = ApiResult<EvidenceAnalysisResult>;
 
-export type EvidenceUploadType = "chat";
+export type EvidenceUploadType = "chat" | "transfer" | "logistics";
 
 export interface UploadFileRequest {
   file: File;
@@ -34,6 +34,8 @@ export interface UploadFileResponse {
   recordCount?: number;
   format_detected?: string;
   extracted_transactions?: number;
+  /** 后端自动识别的数据类型 (统一上传端点 /upload/data 返回) */
+  data_type?: "transactions" | "communications" | "logistics";
 }
 
 export interface ImportEvidenceRequest {

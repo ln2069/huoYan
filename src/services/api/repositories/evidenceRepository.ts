@@ -2,9 +2,14 @@ import type { EvidenceRepository, EvidenceUploadType } from "@/services/api/type
 import { post } from "@/services/api/client";
 import { httpClient } from "@/services/api/client";
 
+/**
+ * 将前端 evidenceType 映射到后端上传路径。
+ * 统一端点 /upload/data 会自动识别文件类型，无需传 type 参数。
+ * 旧端点保留向后兼容。
+ */
 function mapUploadPath(evidenceType: EvidenceUploadType): string {
-  if (evidenceType === "chat") return "/upload/communications";
-  return "/upload/communications"; // Default to chat
+  // 使用统一端点，后端自动通过表头识别数据类型
+  return "/upload/data";
 }
 
 export function createApiEvidenceRepository(): EvidenceRepository {

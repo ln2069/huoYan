@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { RouterLink, RouterView } from "vue-router";
 import { get } from "@/services/api/client";
 import { ElMessage } from "element-plus";
+import { clearSession, isLoggedIn } from "@/services/auth/authService";
 import {
   User,
   DataBoard,
@@ -23,16 +24,14 @@ const criminalCluesCount = ref(0);
 
 // 注销逻辑
 function handleLogout() {
-  localStorage.removeItem('basic_auth_username');
-  localStorage.removeItem('basic_auth_password');
-  localStorage.removeItem('user_info');
+  clearSession();
   ElMessage.success('已安全退出系统');
   router.push('/login');
 }
 
 // Fetch criminal-level clue count for notification badge (#19)
 onMounted(async () => {
-  if (route.path === '/login' || !localStorage.getItem('basic_auth_username')) return;
+  if (route.path === '/login' || !isLoggedIn()) return;
 
   try {
     const cases = await get<any[]>('/cases?limit=500');
@@ -76,7 +75,6 @@ const nav = [
       { to: "/ledger/person", label: "人物台账" },
       { to: "/ledger/fund", label: "资金台账" },
       { to: "/ledger/evidence", label: "证据清单" },
-      { to: "/ledger/report", label: "统计报表" },
     ],
   },
 ];
