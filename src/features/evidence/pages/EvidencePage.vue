@@ -71,6 +71,15 @@ function createAnalysisState(): AnalysisState {
   };
 }
 
+const dataTypeLabels: Record<string, string> = {
+  general: '导入数据',
+  communication: '通讯记录',
+  transaction: '资金流水',
+  logistics: '物流记录',
+  communications: '通讯记录',
+  transactions: '资金流水',
+};
+
 const templateHintsMap: Record<string, { label: string; columns: string[] }> = {
   general: {
     label: '证据数据',
@@ -389,12 +398,7 @@ async function handleFileUpload(file: File, evidenceType: "chat" | "transfer" | 
     const wechatExtra = response.format_detected === 'wechat' && response.extracted_transactions
       ? `，自动提取 ${response.extracted_transactions} 条转账记录` : "";
 
-    const dataTypeLabel: Record<string, string> = {
-      transactions: '资金流水',
-      communications: '通讯记录',
-      logistics: '物流记录',
-    };
-    const detectedLabel = response.data_type ? `（${dataTypeLabel[response.data_type] ?? response.data_type}）` : '';
+    const detectedLabel = response.data_type ? `（${dataTypeLabels[response.data_type] ?? response.data_type}）` : '';
     ElMessage.success(`证据数据「${file.name}」${detectedLabel}上传成功，入库 ${response.saved_records}/${response.total_records} 条${wechatExtra}${inferenceText}`);
   } catch (error) {
     // 表格格式校验错误 — 专项友好提示
@@ -820,7 +824,9 @@ async function downloadLastReport() {
                     <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">{{ actor.role }}</span>
                     <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">{{ actor.contact }}</span>
                   </div>
-                  <div v-if="actor.mentioned_in" class="text-[11px] mt-2 text-gray-500">出现于：{{ actor.mentioned_in }}</div>
+                  <div v-if="actor.mentioned_in" class="text-[11px] mt-2 text-gray-500">
+                    出现于：{{ dataTypeLabels[actor.mentioned_in] || actor.mentioned_in }}
+                  </div>
                 </div>
               </div>
             </div>
