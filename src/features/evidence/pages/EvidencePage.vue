@@ -228,12 +228,6 @@ const uploadFormatDetected = computed(() => currentUploadState.value.formatDetec
 const uploadExtractedTxns = computed(() => currentUploadState.value.extractedTransactions);
 const currentTemplateHint = computed(() => templateHintsMap[evidenceTab.value]);
 
-// 直接使用后端 key_actors 原始数组，不做任何前端押居
-const normalizedKeyActors = computed(() => {
-  const result = analysisResult.value as any;
-  return Array.isArray(result?.key_actors) ? result.key_actors : [];
-});
-
 
 
 // 智能分析接口调用
@@ -275,8 +269,6 @@ async function startAnalysis() {
         ...sk,
         category_counts: sk.categories ?? sk.category_counts ?? {}
       } : null,
-      // key_actors 直接传递
-      key_actors: rawData.key_actors || [],
       // 润召罪名：优先使用子弹中的 crime_type
       crime_type: rawData.crime_type || sk?.crime_type || null,
       cross_validation: rawData.cross_validation || null,
@@ -805,27 +797,6 @@ async function downloadLastReport() {
                       :key="category" class="px-2 py-1 rounded text-xs bg-gray-100">
                       {{ category }}: {{ count }}
                     </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 关键信息主体 -->
-            <div v-if="normalizedKeyActors.length > 0" class="app-card p-5">
-              <div class="flex items-center gap-2 mb-3">
-                <span class="text-lg">🟡</span>
-                <h4 class="font-bold text-sm" style="color: #1A3A5C">关键信息主体</h4>
-              </div>
-              <div class="space-y-2">
-                <div v-for="actor in normalizedKeyActors" :key="actor.name"
-                  class="p-3 rounded bg-gray-50 border border-gray-100">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 font-bold">{{ actor.name }}</span>
-                    <span v-if="actor.role" class="px-2 py-1 rounded text-xs bg-green-100 text-green-800">{{ actor.role }}</span>
-                    <span v-if="actor.contact" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">{{ actor.contact }}</span>
-                  </div>
-                  <div v-if="actor.mentioned_in" class="text-[11px] mt-2 text-gray-500">
-                    出现于：{{ dataTypeLabels[actor.mentioned_in] || actor.mentioned_in }}
                   </div>
                 </div>
               </div>

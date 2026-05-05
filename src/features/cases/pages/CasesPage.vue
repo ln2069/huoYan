@@ -14,13 +14,12 @@ import {
   ElPagination,
   type FormRules,
 } from "element-plus";
-import { Plus, Delete, Download, Share, Refresh } from "@element-plus/icons-vue";
+import { Plus, Delete, Download, Refresh } from "@element-plus/icons-vue";
 import { repositories } from "@/services";
-import { get, post } from "@/services/api/client";
+import { post } from "@/services/api/client";
 import type { CaseSummary } from "@/entities/case";
 import { PrimaryButton, TabButton } from "@/shared/components";
 import { useReportStore } from "@/shared/stores/reportStore";
-import { maskName } from "@/utils/masking";
 
 const router = useRouter();
 const dialogOpen = ref(false);
@@ -37,9 +36,6 @@ const detailLoading = ref(false);
 const generatingReport = ref(false);
 const chainData = ref<any>(null);
 const linkedCasesCount = ref(0);
-const keyActors = ref<any[]>([]);
-const actorsLoading = ref(false);
-const isMasked = ref(true);
 const inferenceLoading = ref(false);
 const reportStore = useReportStore();
 
@@ -169,19 +165,6 @@ function gotoRelations() {
   router.push(`/relations/upstream?caseId=${currentCase.value.id}`);
 }
 
-async function loadKeyActors(caseId: string) {
-  actorsLoading.value = true;
-  try {
-    const res = await get<any>(`/analyze/actors/${caseId}`);
-    keyActors.value = Array.isArray(res) ? res : (res?.data || []);
-  } catch (err) {
-    console.error("加载关键主体失败:", err);
-    keyActors.value = [];
-  } finally {
-    actorsLoading.value = false;
-  }
-}
-
 async function generateReport() {
   if (!currentCase.value) return;
   generatingReport.value = true;
@@ -221,11 +204,9 @@ function openDetail(row: CaseSummary) {
   detailData.value = null;
   chainData.value = null;
   linkedCasesCount.value = 0;
-  keyActors.value = [];
   loadCaseDetail(row.id.toString());
   loadRelations(row.id.toString());
   loadLinkedCasesCount(row.id);
-  loadKeyActors(row.id.toString());
 }
 
 function resetFilter() {
@@ -318,8 +299,7 @@ async function deleteCase() {
       currentCase.value = null;
       detailData.value = null;
       chainData.value = null;
-      keyActors.value = [];
-      loadCases(); // 重新加载案件列表
+          loadCases(); // 重新加载案件列表
     } else if (response) {
       // 直接返回数据的情况
       ElMessage.success("案件删除成功");
@@ -327,8 +307,7 @@ async function deleteCase() {
       currentCase.value = null;
       detailData.value = null;
       chainData.value = null;
-      keyActors.value = [];
-      loadCases(); // 重新加载案件列表
+          loadCases(); // 重新加载案件列表
     } else {
       ElMessage.error("删除案件失败");
     }
@@ -519,57 +498,10 @@ onMounted(() => {
         <div v-if="detailTab === 'relation'" class="space-y-4">
           <div class="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
             <div class="flex items-center gap-2">
-              <span class="text-sm font-semibold text-[#1A3A5C]">🤖 AI 关键主体分析</span>
-              <el-checkbox v-model="isMasked" label="脱敏显示" border size="small" />
+              <span class="text-sm font-semibold text-[#1A3A5C]">关系网络</span>
             </div>
             <el-button type="primary" size="small" link @click="gotoRelations">
               进入深度关系网 →
-            </el-button>
-          </div>
-
-          <div v-if="actorsLoading" class="py-12 text-center" v-loading="true"></div>
-
-          <div v-else-if="keyActors && keyActors.length > 0" class="grid grid-cols-2 gap-3">
-            <div v-for="(actor, idx) in keyActors" :key="idx"
-              class="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all shadow-sm group">
-              <div class="flex justify-between items-start mb-3">
-                <div class="flex items-center gap-2">
-                  <div
-                    class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                    {{ actor.name?.charAt(0) }}
-                  </div>
-                  <span class="font-bold text-[#1A3A5C] text-base">
-                    {{ isMasked ? maskName(actor.name) : actor.name }}
-                  </span>
-                </div>
-                <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100">
-                  {{ actor.role }}
-                </span>
-              </div>
-              <div class="space-y-2 text-xs">
-                <p class="text-gray-600"><span class="text-gray-400">涉嫌罪名：</span>{{ actor.crime_type }}</p>
-                <div class="flex flex-wrap gap-1 mt-1">
-                  <span v-for="tag in actor.keyword_roles" :key="tag"
-                    class="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-100">
-                    # {{ tag }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="py-12 bg-gray-50 rounded-lg border border-gray-200 text-center">
-            <div class="mb-6 flex flex-col items-center">
-              <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                <el-icon :size="32" class="text-blue-600">
-                  <Share />
-                </el-icon>
-              </div>
-              <p class="text-gray-600 font-medium">暂未识别到核心主体，点击下方按钮尝试全量深度分析</p>
-            </div>
-            <el-button type="primary" size="large" @click="gotoRelations"
-              class="!bg-[#1A3A5C] !border-[#1A3A5C] shadow-sm px-8">
-              进入深度关系分析 →
             </el-button>
           </div>
         </div>
