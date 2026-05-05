@@ -27,6 +27,7 @@ export type CluesResponse = {
   suspicion_clues: SuspiciousClue[];
   price_clues: SuspiciousClue[];
   role_clues: SuspiciousClue[];
+  cross_anomalies: SuspiciousClue[];
 };
 
 export interface CasesRepository {

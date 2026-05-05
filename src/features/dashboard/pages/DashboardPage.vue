@@ -128,7 +128,7 @@ async function fetchDashboardData() {
     const transactions = Array.isArray(transRes) ? transRes : ((transRes as any)?.list || (transRes as any)?.data || []);
 
     // Fetch suspicious clues for all cases
-    // API returns { suspicion_clues: [...], price_clues: [...], role_clues: [...] }
+    // API returns { suspicion_clues: [...], price_clues: [...], role_clues: [...], cross_anomalies: [...] }
     let suspiciousCount = 0;
     const liveCluesData: any[] = [];
     for (const c of cases) {
@@ -144,6 +144,7 @@ async function fetchDashboardData() {
             ...(s.suspicion_clues || s.suspicious_clues || []),
             ...(s.price_clues || []),
             ...(s.role_clues || []),
+            ...(s.cross_anomalies || []),
             ...(s.data || []),
           ];
         }

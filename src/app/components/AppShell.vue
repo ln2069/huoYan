@@ -45,6 +45,7 @@ onMounted(async () => {
           ...(s.suspicion_clues || s.suspicious_clues || []),
           ...(s.price_clues || []),
           ...(s.role_clues || []),
+          ...(s.cross_anomalies || []),
         ];
         count += all.filter((x: any) => x.severity_level === '刑事犯罪').length;
       } catch { }
