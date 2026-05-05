@@ -49,8 +49,9 @@ async function loadClues() {
     const suspicion = response.suspicion_clues || [];
     const price = response.price_clues || [];
     const role = response.role_clues || [];
+    const cross = response.cross_anomalies || [];
 
-    cluesList.value = [...suspicion, ...price, ...role];
+    cluesList.value = [...suspicion, ...price, ...role, ...cross];
 
     stats.value = {
       high_risk: cluesList.value.filter(c => c.severity_level === '刑事犯罪' || c.score >= 8).length,

@@ -44,7 +44,7 @@ export type CaseDetail = CaseSummary & {
 export type SuspiciousClue = {
   id: number;
   case_id: number;
-  clue_type: string;          // "主观明知" | "价格异常" | "角色异常"
+  clue_type: string;          // "主观明知" | "价格异常" | "角色异常" | "交易异常"
   evidence_text: string;
   hit_keywords: string[] | string;
   score: number;
